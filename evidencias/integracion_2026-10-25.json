@@ -1,0 +1,296 @@
+{
+  "fecha": "2026-10-25",
+  "codCredito": "CR-INTEG-212034",
+  "idCliente": "CLI-INTEG-212034",
+  "pasos": [
+    {
+      "paso": "1-activar",
+      "descripcion": "Desembolso activa la obligacion (CR-INT-06)",
+      "peticion": {
+        "metodo": "POST",
+        "url": "http://127.0.0.1:8090/cobranza/cr-int-06/obligaciones",
+        "headers": {
+          "X-API-Key": "***"
+        },
+        "body": {
+          "codCredito": "CR-INTEG-212034",
+          "idCliente": "CLI-INTEG-212034",
+          "idSolicitud": "SOL-212034",
+          "montoAprobado": 1000.0,
+          "moneda": "PEN",
+          "fechaDesembolso": "2026-10-05T10:00:00",
+          "calendarioPagos": [
+            {
+              "numeroCuota": 1,
+              "fechaVencimiento": "2026-11-05",
+              "montoCuota": 1000.0
+            }
+          ]
+        }
+      },
+      "respuesta": {
+        "codigo": 201,
+        "body": {
+          "codCredito": "CR-INTEG-212034",
+          "idCliente": "CLI-INTEG-212034",
+          "montoAprobado": 1000.0,
+          "moneda": "PEN",
+          "fechaDesembolso": "2026-10-05 10:00:00",
+          "estadoCredito": "AL_DIA",
+          "saldoTotalPendiente": 1000.0,
+          "cuotas": [
+            {
+              "idCuota": "CU-67AFF736",
+              "numeroCuota": 1,
+              "fechaVencimiento": "2026-11-05",
+              "montoCuota": 1000.0,
+              "saldoPendiente": 1000.0,
+              "moraPendiente": 0.0,
+              "totalAdeudado": 1000.0,
+              "estadoCuota": "PENDIENTE"
+            }
+          ]
+        },
+        "tiempoMs": 1134.4
+      }
+    },
+    {
+      "paso": "pago",
+      "descripcion": "Home Banking paga parcial (CR-INT-08)",
+      "peticion": {
+        "metodo": "POST",
+        "url": "http://127.0.0.1:8090/cobranza/cr-int-08/pagos",
+        "headers": {
+          "X-API-Key": "***",
+          "X-Token-Seguridad": "***"
+        },
+        "body": {
+          "codCliente": "CLI-INTEG-212034",
+          "codCredito": "CR-INTEG-212034",
+          "montoPago": 150.0,
+          "cuentaOrigen": "AH-001-123456",
+          "referenciaTransaccion": "OP-INTEG-1",
+          "idCanal": "HB"
+        }
+      },
+      "respuesta": {
+        "codigo": 200,
+        "body": {
+          "idPago": "PAG-9DA0ADC2",
+          "referenciaTransaccion": "OP-INTEG-1",
+          "estado": "CONFIRMADO",
+          "idempotente": false,
+          "motivo": "Cargo de 150.0 PEN aplicado a AH-001-123456",
+          "codCredito": "CR-INTEG-212034",
+          "idCanal": "HB",
+          "montoPago": 150.0,
+          "fechaHora": "2026-10-25 21:20:38",
+          "aplicacion": {
+            "idCuota": "CU-67AFF736",
+            "numeroCuota": 1,
+            "montoAplicado": 150.0,
+            "montoAplicadoMora": 0.0,
+            "montoAplicadoCapital": 150.0,
+            "saldoPendienteCuota": 850.0,
+            "moraPendienteCuota": 0.0,
+            "estadoCuota": "PARCIAL"
+          },
+          "estadoCredito": "AL_DIA"
+        },
+        "tiempoMs": 2329.2
+      }
+    },
+    {
+      "paso": "pago",
+      "descripcion": "Home Banking repite el mismo pago (idempotencia)",
+      "peticion": {
+        "metodo": "POST",
+        "url": "http://127.0.0.1:8090/cobranza/cr-int-08/pagos",
+        "headers": {
+          "X-API-Key": "***",
+          "X-Token-Seguridad": "***"
+        },
+        "body": {
+          "codCliente": "CLI-INTEG-212034",
+          "codCredito": "CR-INTEG-212034",
+          "montoPago": 150.0,
+          "cuentaOrigen": "AH-001-123456",
+          "referenciaTransaccion": "OP-INTEG-1",
+          "idCanal": "HB"
+        }
+      },
+      "respuesta": {
+        "codigo": 200,
+        "body": {
+          "idPago": "PAG-9DA0ADC2",
+          "referenciaTransaccion": "OP-INTEG-1",
+          "estado": "CONFIRMADO",
+          "idempotente": true,
+          "motivo": null,
+          "codCredito": "CR-INTEG-212034",
+          "idCanal": "HB",
+          "montoPago": 150.0,
+          "fechaHora": "2026-10-25 21:20:38",
+          "aplicacion": {
+            "idCuota": "CU-67AFF736",
+            "numeroCuota": 1,
+            "montoAplicado": 150.0,
+            "montoAplicadoMora": 0.0,
+            "montoAplicadoCapital": 150.0,
+            "saldoPendienteCuota": 850.0,
+            "moraPendienteCuota": 0.0,
+            "estadoCuota": "PARCIAL"
+          },
+          "estadoCredito": "AL_DIA"
+        },
+        "tiempoMs": 1157.7
+      }
+    },
+    {
+      "paso": "pago",
+      "descripcion": "Pago con fondos insuficientes en Cuentas",
+      "peticion": {
+        "metodo": "POST",
+        "url": "http://127.0.0.1:8090/cobranza/cr-int-08/pagos",
+        "headers": {
+          "X-API-Key": "***",
+          "X-Token-Seguridad": "***"
+        },
+        "body": {
+          "codCliente": "CLI-INTEG-212034",
+          "codCredito": "CR-INTEG-212034",
+          "montoPago": 50.0,
+          "cuentaOrigen": "AH-SIN-FONDOS",
+          "referenciaTransaccion": "OP-INTEG-2",
+          "idCanal": "HB"
+        }
+      },
+      "respuesta": {
+        "codigo": 200,
+        "body": {
+          "idPago": "PAG-02BB0DB5",
+          "referenciaTransaccion": "OP-INTEG-2",
+          "estado": "RECHAZADO",
+          "idempotente": false,
+          "motivo": "Fondos insuficientes en AH-SIN-FONDOS (saldo 10.00, requerido 50.0)",
+          "codCredito": "CR-INTEG-212034",
+          "idCanal": "HB",
+          "montoPago": 50.0,
+          "fechaHora": "2026-10-25 21:20:42",
+          "aplicacion": null,
+          "estadoCredito": "AL_DIA"
+        },
+        "tiempoMs": 2054.1
+      }
+    },
+    {
+      "paso": "pago",
+      "descripcion": "Pago donde Cuentas demora mas que el timeout del cliente (INC-01)",
+      "peticion": {
+        "metodo": "POST",
+        "url": "http://127.0.0.1:8090/cobranza/cr-int-08/pagos",
+        "headers": {
+          "X-API-Key": "***",
+          "X-Token-Seguridad": "***"
+        },
+        "body": {
+          "codCliente": "CLI-INTEG-212034",
+          "codCredito": "CR-INTEG-212034",
+          "montoPago": 100.0,
+          "cuentaOrigen": "SIN-RESPUESTA",
+          "referenciaTransaccion": "OP-INTEG-3",
+          "idCanal": "HB"
+        }
+      },
+      "respuesta": {
+        "codigo": 200,
+        "body": {
+          "idPago": "PAG-79D92913",
+          "referenciaTransaccion": "OP-INTEG-3",
+          "estado": "PENDIENTE",
+          "idempotente": false,
+          "motivo": "Cuentas no respondio",
+          "codCredito": "CR-INTEG-212034",
+          "idCanal": "HB",
+          "montoPago": 100.0,
+          "fechaHora": "2026-10-25 21:20:44",
+          "aplicacion": null,
+          "estadoCredito": "AL_DIA"
+        },
+        "tiempoMs": 6684.7
+      }
+    },
+    {
+      "paso": "6-resolver",
+      "descripcion": "Resolver el pago PENDIENTE consultando a Cuentas (RF-COB-011 / RN-COB-009)",
+      "peticion": {
+        "metodo": "POST",
+        "url": "http://127.0.0.1:8090/cobranza/pagos/OP-INTEG-3/resolver",
+        "headers": {
+          "X-API-Key": "***"
+        },
+        "body": null
+      },
+      "respuesta": {
+        "codigo": 200,
+        "body": {
+          "idPago": "PAG-79D92913",
+          "referenciaTransaccion": "OP-INTEG-3",
+          "estado": "CONFIRMADO",
+          "idempotente": false,
+          "motivo": "Cargo de 100.0 PEN aplicado a SIN-RESPUESTA",
+          "codCredito": "CR-INTEG-212034",
+          "idCanal": "HB",
+          "montoPago": 100.0,
+          "fechaHora": "2026-10-25 21:20:44",
+          "aplicacion": {
+            "idCuota": "CU-67AFF736",
+            "numeroCuota": 1,
+            "montoAplicado": 100.0,
+            "montoAplicadoMora": 0.0,
+            "montoAplicadoCapital": 100.0,
+            "saldoPendienteCuota": 750.0,
+            "moraPendienteCuota": 0.0,
+            "estadoCuota": "PARCIAL"
+          },
+          "estadoCredito": "AL_DIA"
+        },
+        "tiempoMs": 2040.9
+      }
+    },
+    {
+      "paso": "7-conciliacion",
+      "descripcion": "Conciliacion del dia",
+      "peticion": {
+        "metodo": "GET",
+        "url": "http://127.0.0.1:8090/cobranza/conciliacion",
+        "headers": {
+          "X-API-Key": "***"
+        },
+        "body": null
+      },
+      "respuesta": {
+        "codigo": 200,
+        "body": {
+          "fecha": "2026-10-25",
+          "totalCobrado": 250.0,
+          "totalAplicado": 250.0,
+          "diferencia": 0.0,
+          "cantidadPagosCobrados": 2,
+          "pagosPendientes": [],
+          "pagosRechazados": [
+            {
+              "idPago": "PAG-02BB0DB5",
+              "codCredito": "CR-INTEG-212034",
+              "referenciaTransaccion": "OP-INTEG-2",
+              "fechaHora": "2026-10-25 21:20:42",
+              "montoPago": 50.0
+            }
+          ],
+          "pagosRequierenRevision": []
+        },
+        "tiempoMs": 1126.2
+      }
+    }
+  ]
+}

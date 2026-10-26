@@ -68,6 +68,43 @@ uvicorn app.main:app --reload --port 8000
 Swagger: http://localhost:8000/docs (`/salud` confirma que la API está arriba, sin clave). En **Authorize**
 pega el valor de una de las `API_KEY_*` del `.env` para probar el resto de endpoints.
 
+## Integración por red (Parte 3)
+Ningún otro módulo publica API todavía, así que cada interfaz se prueba contra un **simulador HTTP
+propio**, en su propio puerto, hablando por red real (no llamadas directas a `app/servicio.py`) y
+**siempre a través de un Bus de Servicios** (RNF-04: ningún módulo llama a otro directo).
+
+| Servicio | Carpeta/archivo | Puerto |
+|---|---|---|
+| Cobranza API | `app/main.py` | 8000 |
+| Cuentas (simulado, CR-INT-07) | `simuladores/cuentas_app.py` | 8001 |
+| Bus de Servicios | `simuladores/bus_app.py` | 8080 (enruta `/cobranza/*` y `/cuentas/*`) |
+| Desembolso (script cliente, CR-INT-06) | `simuladores/desembolso_cliente.py` | — (no es servidor) |
+| Home Banking (script cliente, CR-INT-08) | `simuladores/home_banking_cliente.py` | — (no es servidor) |
+
+**Para levantar todo en Windows:**
+```
+levantar_todo.bat
+```
+Abre 3 ventanas (Cobranza, Cuentas, Bus) y define `CUENTAS_URL=http://127.0.0.1:8080/cuentas/cargos`
+para que Cobranza llame a Cuentas **a través del Bus** (sin tocar la lógica de `app/cuentas.py`, solo
+la variable de entorno). Si prefieres hacerlo a mano, abre 3 terminales:
+```
+uvicorn app.main:app --port 8000          (en una terminal con CUENTAS_URL seteada, ver arriba)
+uvicorn simuladores.cuentas_app:app --port 8001
+uvicorn simuladores.bus_app:app --port 8080
+```
+
+**Prueba de integración completa** (Desembolso activa → Home Banking paga parcial → duplicado → fondos
+insuficientes → Cuentas sin respuesta (INC-01) → resolver pendiente → conciliación), con los 3
+servicios ya arriba:
+```
+python simuladores/prueba_integracion.py
+```
+Guarda la evidencia de cada paso en `evidencias/integracion_<fecha>.json` (JSON completo) y
+`evidencias/integracion_<fecha>.md` (resumen legible). El estado de cada módulo está en
+`docs/estado-integracion.md`, y el contrato JSON exacto de cada interfaz (para compartir con los otros
+equipos) en `docs/contratos-cr-int.md`.
+
 ## Guion del video (4 a 5 minutos)
 Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado. No muestres la clave
 de MySQL ni el valor real de las `API_KEY_*` (usa el botón **Authorize** fuera de cámara o difumínalas).
@@ -106,7 +143,7 @@ pagos (`POST /cr-int-08/pagos`) necesitan además `X-Token-Seguridad` (cualquier
 - **Mora:** la fórmula y quién la calcula están pendientes del Comité (RN-COB-005). Cobranza no calcula ni asume tasa: guarda la mora que recibe en `CUOTA.moraPendiente`, **separada del capital** (`CUOTA.saldoPendiente`). Un recálculo reemplaza el valor vigente (no se suma) y el historial completo queda en la tabla `MORA` (campo `vigente`). **RN-COB-010:** se rechaza (422) si la cuota aún no venció respecto de la fecha de referencia (por defecto hoy; `fechaReferencia` opcional en el endpoint, igual que en `recalcular-estado`, para poder demostrarlo) o si `diasAtraso` es 0 con `montoCalculado` mayor a cero.
 - **Orden de imputación del pago (RF-COB-008/013):** es un **SUPUESTO provisional, pendiente de definición del Comité**. Hoy el pago cubre primero la mora vigente de la cuota y el resto va a capital (constante `ORDEN_IMPUTACION_MORA_PRIMERO` en `app/servicio.py`; cambiarla a `False` invierte el orden). El comprobante y la respuesta del pago muestran `montoAplicadoMora` y `montoAplicadoCapital` por separado.
 - **Estados del crédito (RF-COB-007):** catálogo **provisional, pendiente de definición del Comité**: `AL_DIA`, `EN_MORA` (alguna cuota con saldo —capital o mora— vencida respecto de la fecha de referencia) y `CANCELADO` (terminal, todas las cuotas saldadas). Se recalcula automáticamente tras cada pago y cada registro de mora, y manualmente con `POST /creditos/{cod}/recalcular-estado?fechaReferencia=AAAA-MM-DD` (parámetro opcional, pensado para demostrar la transición sin esperar al vencimiento real).
-- **Cuentas:** por defecto está simulado. `cuentaOrigen = "SIN-FONDOS"` simula un rechazo y `"SIN-RESPUESTA"` simula que Cuentas no responde (el pago queda `PENDIENTE`). Para conectarlo al módulo real, define `CUENTAS_URL` y acuerda el formato de respuesta con ese equipo.
+- **Cuentas:** por defecto está simulado en memoria (`app/cuentas.py:CuentasSimulado`). `cuentaOrigen = "SIN-FONDOS"` simula un rechazo y `"SIN-RESPUESTA"` simula que Cuentas no responde (el pago queda `PENDIENTE`). Con `CUENTAS_URL` seteada, Cobranza llama por HTTP (`CuentasHTTP`) — en la Parte 3 eso apunta al Bus, que enruta a `simuladores/cuentas_app.py` (puerto 8001), un segundo simulador que sí maneja saldos ficticios y demora real por red. Cuando Cuentas publique su API real, solo cambia `CUENTAS_URL`; el formato de respuesta exacto queda por acordar con ese equipo (ver `docs/contratos-cr-int.md`).
 - **Calendario:** se recibe completo en CR-INT-06. Quién lo mantiene después está pendiente del Comité.
 - **Aplicación del pago:** un pago se aplica a la cuota pendiente más antigua (capital y/o mora) y no puede superar su saldo adeudado total.
 - **Consulta por DNI (RF-COB-002/012):** Cobranza guarda `idCliente`, no el DNI. La consulta por DNI requeriría una interfaz con el módulo Clientes que aún no existe (pendiente, fuera de alcance de esta fase).
@@ -118,7 +155,8 @@ pagos (`POST /cr-int-08/pagos`) necesitan además `X-Token-Seguridad` (cualquier
 - **Campo `resultado` (CR-INT-10):** la matriz oficial lo pide y `EVENTO_AUDITORIA` no lo tenía; se agregó como `EXITOSO` por defecto, con `RECHAZADO`/`PENDIENTE`/`REVISION` para los eventos que no son un éxito liso y llano (ver CLAUDE.md, "Cambios respecto al diccionario de datos de Fase II").
 
 ## Qué falta
-- Probar la integración con los módulos reales: Desembolso, Cuentas y Home Banking.
+- Probar la integración con los módulos **reales**: Desembolso, Cuentas, Home Banking y Seguridad (hoy
+  probada por red contra simuladores propios vía el Bus; ver "Integración por red" y `docs/estado-integracion.md`).
 - Envío de eventos a Seguridad/Auditoría (hoy solo se registran localmente).
 - Autenticación real (hoy es una clave simple por rol, no por usuario; ver Supuestos) y antifraude real para RF-COB-004 (hoy simulado).
 - Recordatorios y notificaciones (fuera de alcance, RF-COB-006/014).

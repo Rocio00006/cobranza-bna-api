@@ -4,11 +4,7 @@ Proyecto académico UCSM, curso GSTI. Banco ficticio "Banco Nacional de Arequipa
 documento responde los cuatro puntos del entregable de la Fase II (ITIL 4) para el módulo Cobranza
 (COB), servicio TI **SRV-CR-05 "Servicio de Cobro de Cuotas de Crédito"**.
 
-> Los textos oficiales de cada `RF-COB-NNN` provienen del diccionario de requerimientos de Fase I,
-> que no está en este repositorio. La trazabilidad de este documento usa las descripciones que ya
-> constaban en `CLAUDE.md` y lo que hace el código; donde no hay certeza del texto oficial exacto
-> (p. ej. `RF-COB-009`, o la redacción literal de `RF-COB-006/014/015`), se indica explícitamente
-> para que se confirme contra el documento del Comité.
+> Los nombres de cada `RF-COB-NNN` son los oficiales del diccionario de requerimientos de Fase I.
 
 ---
 
@@ -21,22 +17,22 @@ carpetas que la tabla de abajo.
 | Endpoint | Método | Rol | RF / RN que demuestra | Verlo en Swagger / Postman |
 |---|---|---|---|---|
 | `/salud` | GET | — (libre) | — | Carpeta "Estado" en Swagger |
-| `/cr-int-06/obligaciones` | POST | `INTEGRACION_BUS` | RF-COB-001, CR-INT-06 | Swagger "CR-INT-06"; Postman carpeta **CR-INT-06**, request 1 |
-| `/creditos/{codCredito}` | GET | `COBRANZA_LEER` | RF-COB-002 | Postman **Consultas**, request 11 |
-| `/creditos/{codCredito}/cuotas` | GET | `COBRANZA_LEER` | RF-COB-002 | Postman **Consultas**, request 12 |
-| `/creditos/{codCredito}/monto-a-pagar` | GET | `COBRANZA_LEER` | RF-COB-003 | Postman **Consultas**, request 13 |
-| `/creditos/{codCredito}/recalcular-estado` | POST | `COBRANZA_EJECUTAR` | RF-COB-007 | Swagger "Consultas" (acción) |
-| `/creditos/{codCredito}/pagos` | GET | `COBRANZA_LEER` | RF-COB-002/012 | Postman **Consultas**, request 14 |
-| `/clientes/{idCliente}/creditos` | GET | `COBRANZA_LEER` | RF-COB-002/012 | Postman **Consultas**, request 15 |
-| `/clientes/{idCliente}/pagos` | GET | `COBRANZA_LEER` | RF-COB-002/012 | Postman **Consultas**, request 16 |
-| `/cr-int-08/pagos` | POST | `INTEGRACION_BUS` (+ `X-Token-Seguridad`) | CR-INT-08; RN-COB-001/002/003/004/006/009/011/012; RF-COB-004 (token); RN-INT-CR-006 | Swagger "CR-INT-08"; Postman carpeta **CR-INT-08**, requests 5-10 |
-| `/pagos/{ref}/comprobante` | GET | `COBRANZA_LEER` | RF-COB-008/013 | Postman **Consultas**, request 17 |
-| `/pagos/pendientes` | GET | `COBRANZA_LEER` | RF-COB-011, INC-01 | Postman **Pendientes y conciliacion**, request 22 |
-| `/pagos/{ref}/resolver` | POST | `COBRANZA_EJECUTAR` | RF-COB-011, RN-COB-009 | Postman **Pendientes y conciliacion**, request 23 |
-| `/conciliacion` | GET | `COBRANZA_LEER` | RF-COB-018 | Postman **Pendientes y conciliacion**, request 24 |
-| `/metricas` | GET | `COBRANZA_LEER` | Indicadores I-05 | Postman **Metricas**, request 30 |
-| `/creditos/{cod}/cuotas/{n}/mora` | POST | `COBRANZA_EJECUTAR` | RF-COB-005, RN-COB-005/010 | Postman **Mora**, requests 18-19 |
-| `/creditos/{cod}/cuotas/{n}/mora` | GET | `COBRANZA_LEER` | RF-COB-005 | Postman **Mora**, request 20 |
+| `/cr-int-06/obligaciones` | POST | `INTEGRACION_BUS` | RF-COB-015 (Activar obligación tras desembolso), CR-INT-06 | Swagger "CR-INT-06"; Postman carpeta **CR-INT-06**, request 1 |
+| `/creditos/{codCredito}` | GET | `COBRANZA_LEER` | RF-COB-002 (Consultar cronograma) | Postman **Consultas**, request 11 |
+| `/creditos/{codCredito}/cuotas` | GET | `COBRANZA_LEER` | RF-COB-002 (Consultar cronograma) | Postman **Consultas**, request 12 |
+| `/creditos/{codCredito}/monto-a-pagar` | GET | `COBRANZA_LEER` | RF-COB-003 (Calcular monto a pagar) | Postman **Consultas**, request 13 |
+| `/creditos/{codCredito}/recalcular-estado` | POST | `COBRANZA_EJECUTAR` | RF-COB-007 (Actualizar estado del crédito) | Swagger "Consultas" (acción) |
+| `/creditos/{codCredito}/pagos` | GET | `COBRANZA_LEER` | RF-COB-012 (Consultar historial) | Postman **Consultas**, request 14 |
+| `/clientes/{idCliente}/creditos` | GET | `COBRANZA_LEER` | RF-COB-002 (cronograma, por idCliente) | Postman **Consultas**, request 15 |
+| `/clientes/{idCliente}/pagos` | GET | `COBRANZA_LEER` | RF-COB-012 (historial, por idCliente) | Postman **Consultas**, request 16 |
+| `/cr-int-08/pagos` | POST | `INTEGRACION_BUS` (+ `X-Token-Seguridad`) | CR-INT-08; RF-COB-001 (Registrar pago de cuota), RF-COB-004 (Validar identidad/medio de pago), RF-COB-005 (Aplicar pago a cuenta de crédito), RF-COB-010 (Registrar pago parcial), RF-COB-011 (Reportar pago fallido o reversado), RF-COB-016 (Idempotencia), RF-COB-017 (Pagos superiores a la cuota) | Swagger "CR-INT-08"; Postman carpeta **CR-INT-08**, requests 5-10 |
+| `/pagos/{ref}/comprobante` | GET | `COBRANZA_LEER` | RF-COB-008 (Emitir comprobante), RF-COB-013 (Recargo por mora en el comprobante) | Postman **Consultas**, request 17 |
+| `/pagos/pendientes` | GET | `COBRANZA_LEER` | RF-COB-011 (Reportar pago fallido o reversado), INC-01 | Postman **Pendientes y conciliacion**, request 22 |
+| `/pagos/{ref}/resolver` | POST | `COBRANZA_EJECUTAR` | RF-COB-011 (Reportar pago fallido o reversado), RN-COB-009 | Postman **Pendientes y conciliacion**, request 23 |
+| `/conciliacion` | GET | `COBRANZA_LEER` | RF-COB-018 (Conciliación diaria) | Postman **Pendientes y conciliacion**, request 24 |
+| `/metricas` | GET | `COBRANZA_LEER` | Indicadores I-05 (sin RF específico) | Postman **Metricas**, request 30 |
+| `/creditos/{cod}/cuotas/{n}/mora` | POST | `COBRANZA_EJECUTAR` | RF-COB-009 (Calcular interés moratorio — pendiente del Comité; solo se registra lo recibido), RN-COB-005/010 | Postman **Mora**, requests 18-19 |
+| `/creditos/{cod}/cuotas/{n}/mora` | GET | `COBRANZA_LEER` | RF-COB-009 | Postman **Mora**, request 20 |
 | `/auditoria` | GET | `COBRANZA_LEER` | CR-INT-10, RN-CR-GEN-004 | Postman **Seguridad y roles**, request 25; Swagger |
 
 Autenticación por rol (`401` sin clave, `403` con rol insuficiente) y `X-Token-Seguridad` (`401`
@@ -170,23 +166,23 @@ npx newman run postman/Cobranza-BNA.postman_collection.json \
 
 ## Trazabilidad RF-COB-001 a RF-COB-018
 
-| RF | Descripción (según CLAUDE.md / diccionario disponible) | Estado | Código | Prueba(s) |
+| RF | Nombre oficial (Fase I) | Estado | Código | Prueba(s) |
 |---|---|---|---|---|
-| RF-COB-001 | Activar la obligación de cobro al recibir CR-INT-06; solo créditos desembolsados y activados (RN-COB-001) | Hecho | `app/servicio.py:activar_obligacion` | `tests/test_servicio.py: test_activacion_crea_credito_y_cuotas, test_activacion_duplicada_es_rechazada` |
-| RF-COB-002 | Consultar crédito/cronograma/historial por `codCredito` y por `idCliente`; por DNI, pendiente | Parcial (DNI falta) | `obtener_credito`, `creditos_por_cliente`, `pagos_por_cliente` | `tests/test_parte2a.py: test_consulta_de_creditos_y_pagos_por_idCliente` |
-| RF-COB-003 | Endpoint de monto a pagar desglosado (saldo de capital + mora vigente) | Hecho | `monto_a_pagar` | `tests/test_parte2a.py: test_monto_a_pagar_desglosa_capital_y_mora, test_monto_a_pagar_sin_cuotas_pendientes_es_rechazado` |
-| RF-COB-004 | Validación de identidad del pago (PROPUESTA: token de Seguridad simulado) | Hecho (simulado) | `app/seguridad.py:SeguridadSimulada`, `servicio.registrar_pago` | `tests/test_parte2c.py` (8 pruebas: token inválido/vacío/válido, bloqueo, reinicio de contador, auditoría) |
-| RF-COB-005 | Registrar la mora recibida, con historial (no se calcula en Cobranza) | Hecho | `registrar_mora`, `historial_mora` | `tests/test_servicio.py: test_mora_se_refleja_y_el_recalculo_conserva_historial`; `tests/test_parte2a.py` (RN-COB-010) |
-| RF-COB-006 | Recordatorios | Fuera de alcance | — | — |
-| RF-COB-007 | Estados del crédito (AL_DIA/EN_MORA/CANCELADO, catálogo provisional) | Hecho (provisional) | `recalcular_estado_credito`, `recalcular_estado`, endpoint `POST /creditos/{cod}/recalcular-estado` | `tests/test_parte2a.py: test_credito_en_mora_al_activar_con_cuota_ya_vencida, test_recalcular_estado_con_fecha_de_referencia_para_demostracion, test_estado_se_recalcula_tras_pago_y_evento_queda_en_auditoria` |
-| RF-COB-008 | Comprobante del pago con línea de mora desglosada (junto con RF-COB-013) | Hecho | `comprobante` | `tests/test_parte2a.py: test_comprobante_desglosa_cuanto_fue_mora_y_cuanto_capital` |
-| RF-COB-009 | No identificado explícitamente en el diccionario disponible en este repositorio | No verificado | — | Confirmar contra el documento oficial de Fase I |
-| RF-COB-010 | El atraso se calcula con el calendario vigente recibido, no con fechas propias (RN-COB-010) | Hecho | `recalcular_estado_credito` (comparación de `fechaVencimiento`), `registrar_mora` (RN-COB-010) | `tests/test_parte2a.py: test_mora_rechazada_si_la_cuota_no_vencio, test_mora_rechazada_si_diasAtraso_es_cero_con_monto_mayor_a_cero, test_mora_aceptada_cuando_la_cuota_ya_vencio` |
-| RF-COB-011 | Consultar y resolver pagos PENDIENTES sin reintentar el cargo (INC-01) | Hecho | `pagos_pendientes`, `resolver_pago` | `tests/test_parte2b.py` (7 pruebas de `resolver_pago`/`pagos_pendientes`) |
-| RF-COB-012 | Consulta de historial por `codCredito` y por `idCliente` (junto con RF-COB-002) | Hecho | `historial_pagos`, `pagos_por_cliente` | `tests/test_servicio.py: test_comprobante_y_auditoria`; `tests/test_parte2a.py: test_consulta_de_creditos_y_pagos_por_idCliente` |
-| RF-COB-013 | Comprobante con mora desglosada (junto con RF-COB-008) | Hecho | `comprobante` | `tests/test_parte2a.py: test_comprobante_desglosa_cuanto_fue_mora_y_cuanto_capital` |
-| RF-COB-014 | Notificaciones | Fuera de alcance | — | — |
-| RF-COB-015 | Aplicación del pago confirmado a la cuota, con traza (RN-COB-006/009) | Hecho | `_aplicar_a_cuota`, rama `CONFIRMADO` de `registrar_pago` | `tests/test_servicio.py: test_pago_parcial_deja_cuota_parcial, test_pago_completo_cierra_cuota_y_pasa_a_la_siguiente, test_credito_se_cancela_al_pagar_todo` |
-| RF-COB-016 | Idempotencia por `referenciaTransaccion`/`idOperacion` (= RN-INT-CR-006) | Hecho | chequeo de `referenciaTransaccion` al inicio de `registrar_pago` | `tests/test_servicio.py: test_idempotencia_no_duplica_el_pago` |
-| RF-COB-017 | Pago mayor al saldo de la cuota se rechaza / aísla (= RN-COB-011); no se decide el tratamiento del excedente | Hecho (rechazo) | chequeo de `monto > total_adeudado` en `registrar_pago` | `tests/test_servicio.py: test_excedente_se_rechaza_hasta_definicion_del_comite`; `tests/test_parte2a.py: test_excedente_se_calcula_sobre_capital_mas_mora` |
-| RF-COB-018 | Conciliación diaria: total cobrado vs aplicado, pagos pendientes y su antigüedad (I-04/I-05) | Hecho | `conciliacion` | `tests/test_parte2b.py: test_conciliacion_cobrado_aplicado_y_detalle, test_conciliacion_refleja_requiere_revision_como_diferencia` |
+| RF-COB-001 | Registrar pago de cuota | Hecho | `app/servicio.py:registrar_pago` (flujo completo CR-INT-08) | `tests/test_servicio.py: test_pago_parcial_deja_cuota_parcial, test_pago_completo_cierra_cuota_y_pasa_a_la_siguiente` |
+| RF-COB-002 | Consultar cronograma | Hecho (por `codCredito` e `idCliente`; por DNI, falta) | `obtener_credito`, `creditos_por_cliente` | `tests/test_servicio.py: test_activacion_crea_credito_y_cuotas`; `tests/test_parte2a.py: test_consulta_de_creditos_y_pagos_por_idCliente` |
+| RF-COB-003 | Calcular monto a pagar | Hecho | `monto_a_pagar` | `tests/test_parte2a.py: test_monto_a_pagar_desglosa_capital_y_mora, test_monto_a_pagar_sin_cuotas_pendientes_es_rechazado` |
+| RF-COB-004 | Validar identidad o medio de pago | Hecho (identidad simulada; medio de pago vía Cuentas/CR-INT-07) | `app/seguridad.py:SeguridadSimulada`, `servicio.registrar_pago` (token); `cuentas.cargar` (cuenta/fondos, RN-COB-009) | `tests/test_parte2c.py` (8 pruebas: token inválido/vacío/válido, bloqueo, reinicio de contador, auditoría) |
+| RF-COB-005 | Aplicar pago a cuenta de crédito | Hecho | `_aplicar_a_cuota`, interacción CR-INT-07 en `registrar_pago`/`resolver_pago` | `tests/test_servicio.py: test_pago_parcial_deja_cuota_parcial, test_credito_se_cancela_al_pagar_todo`; `tests/test_parte2b.py` (resolver_pago) |
+| RF-COB-006 | Recordatorio | Fuera de alcance | — | — |
+| RF-COB-007 | Actualizar estado del crédito | Hecho (catálogo provisional: AL_DIA/EN_MORA/CANCELADO) | `recalcular_estado_credito`, `recalcular_estado`, endpoint `POST /creditos/{cod}/recalcular-estado` | `tests/test_parte2a.py: test_credito_en_mora_al_activar_con_cuota_ya_vencida, test_recalcular_estado_con_fecha_de_referencia_para_demostracion, test_estado_se_recalcula_tras_pago_y_evento_queda_en_auditoria` |
+| RF-COB-008 | Emitir comprobante | Hecho | `comprobante` | `tests/test_parte2a.py: test_comprobante_desglosa_cuanto_fue_mora_y_cuanto_capital` |
+| RF-COB-009 | Calcular interés moratorio | Parcial — pendiente del Comité (fórmula y responsable); Cobranza solo **registra** la mora recibida | `registrar_mora`, `historial_mora` | `tests/test_servicio.py: test_mora_se_refleja_y_el_recalculo_conserva_historial`; `tests/test_parte2a.py` (pruebas de mora / RN-COB-010) |
+| RF-COB-010 | Registrar pago parcial | Hecho | `registrar_pago` (cuota queda `PARCIAL` cuando `monto < saldo adeudado`) | `tests/test_servicio.py: test_pago_parcial_deja_cuota_parcial` |
+| RF-COB-011 | Reportar pago fallido o reversado | Hecho | rama `RECHAZADO` de `registrar_pago`/`resolver_pago`; `pagos_pendientes`, `resolver_pago` (INC-01) | `tests/test_servicio.py: test_cuentas_rechaza_y_la_cuota_no_cambia`; `tests/test_parte2b.py` (7 pruebas) |
+| RF-COB-012 | Consultar historial | Hecho (por `codCredito` e `idCliente`; por DNI, falta) | `historial_pagos`, `pagos_por_cliente` | `tests/test_servicio.py: test_comprobante_y_auditoria`; `tests/test_parte2a.py: test_consulta_de_creditos_y_pagos_por_idCliente` |
+| RF-COB-013 | Recargo por mora en el comprobante | Hecho | `comprobante` (`montoAplicadoMora`) | `tests/test_parte2a.py: test_comprobante_desglosa_cuanto_fue_mora_y_cuanto_capital` |
+| RF-COB-014 | Notificar pago | Fuera de alcance | — | — |
+| RF-COB-015 | Activar obligación tras desembolso | Hecho | `activar_obligacion` | `tests/test_servicio.py: test_activacion_crea_credito_y_cuotas, test_activacion_duplicada_es_rechazada` |
+| RF-COB-016 | Idempotencia | Hecho | chequeo de `referenciaTransaccion` al inicio de `registrar_pago` (= RN-INT-CR-006) | `tests/test_servicio.py: test_idempotencia_no_duplica_el_pago` |
+| RF-COB-017 | Pagos superiores a la cuota | Hecho (rechazo); tratamiento del excedente pendiente del Comité | chequeo de `monto > total_adeudado` en `registrar_pago` (= RN-COB-011) | `tests/test_servicio.py: test_excedente_se_rechaza_hasta_definicion_del_comite`; `tests/test_parte2a.py: test_excedente_se_calcula_sobre_capital_mas_mora` |
+| RF-COB-018 | Conciliación diaria | Hecho | `conciliacion` | `tests/test_parte2b.py: test_conciliacion_cobrado_aplicado_y_detalle, test_conciliacion_refleja_requiere_revision_como_diferencia` |

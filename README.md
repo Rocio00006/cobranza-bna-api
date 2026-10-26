@@ -111,6 +111,14 @@ Guarda la evidencia de cada paso en `evidencias/integracion_<fecha>.json` (JSON 
 `docs/estado-integracion.md`, y el contrato JSON exacto de cada interfaz (para compartir con los otros
 equipos) en `docs/contratos-cr-int.md`.
 
+## Prototipo de interfaz
+Prototipo navegable de Home Banking (pago de cuotas), un solo archivo HTML sin dependencias:
+**https://rocio00006.github.io/cobranza-bna-api/prototipo/**
+
+Prototipo con datos ficticios, todavía no conectado a la API. El código fuente está en
+`prototipo/index.html` (ver `prototipo/README.md` para el detalle de qué pantalla corresponde a
+cada endpoint/regla).
+
 ## Guion del video (4 a 5 minutos)
 Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado. No muestres la clave
 de MySQL ni el valor real de las `API_KEY_*` (usa el botón **Authorize** fuera de cámara o difumínalas).

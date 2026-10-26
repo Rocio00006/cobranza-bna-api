@@ -5,16 +5,19 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import servicio as S
+from .auth import requerir_rol
 from .cuentas import crear_cliente_cuentas
 from .db import cargar_env, conectar, crear_esquema
+from .seguridad import crear_validador_seguridad
 
 cargar_env()
 cuentas = crear_cliente_cuentas()
+seguridad = crear_validador_seguridad()
 
 
 @asynccontextmanager
@@ -31,7 +34,10 @@ app = FastAPI(
     description=(
         "Modulo de Cobranza de la Linea de Creditos. Interfaces usadas: CR-INT-06 (Desembolso a Cobranza), "
         "CR-INT-07 (Cobranza a Cuentas, SIMULADO por defecto) y CR-INT-08 (Home Banking a Cobranza). "
-        "La formula de mora y el propietario del calendario estan pendientes del Comite de Creditos."),
+        "La formula de mora y el propietario del calendario estan pendientes del Comite de Creditos. "
+        "Autenticacion (I-04): header X-API-Key por rol (COBRANZA_LEER, COBRANZA_EJECUTAR, "
+        "INTEGRACION_BUS); usa el boton Authorize. CR-INT-08 ademas exige X-Token-Seguridad "
+        "(RF-COB-004, PROPUESTA pendiente del Comite)."),
     lifespan=lifespan,
 )
 
@@ -134,28 +140,32 @@ def salud():
 
 
 @app.post("/cr-int-06/obligaciones", status_code=201, tags=[T06], summary="Activar obligacion de cobro")
-def activar_obligacion(body: ObligacionIn, db=Depends(get_db)):
-    return S.activar_obligacion(db, body.model_dump())
+def activar_obligacion(body: ObligacionIn, db=Depends(get_db), rol: str = Depends(requerir_rol("INTEGRACION_BUS"))):
+    return S.activar_obligacion(db, body.model_dump(), usuario=rol)
 
 
-@app.post("/cr-int-08/pagos", tags=[T08], summary="Registrar pago de una cuota")
-def registrar_pago(body: PagoIn, db=Depends(get_db)):
-    return S.registrar_pago(db, body.model_dump(), cuentas)
+@app.post("/cr-int-08/pagos", tags=[T08],
+          summary="Registrar pago de una cuota (RF-COB-004: exige X-Token-Seguridad)")
+def registrar_pago(
+        body: PagoIn,
+        xTokenSeguridad: Optional[str] = Header(None, alias="X-Token-Seguridad"),
+        db=Depends(get_db), rol: str = Depends(requerir_rol("INTEGRACION_BUS"))):
+    return S.registrar_pago(db, body.model_dump(), cuentas, seguridad, xTokenSeguridad, usuario=rol)
 
 
 @app.get("/creditos/{codCredito}", tags=[TCO], summary="Credito con sus cuotas y saldo")
-def credito(codCredito: str, db=Depends(get_db)):
+def credito(codCredito: str, db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.obtener_credito(db, codCredito)
 
 
 @app.get("/creditos/{codCredito}/cuotas", tags=[TCO], summary="Cronograma de cuotas")
-def cuotas(codCredito: str, db=Depends(get_db)):
+def cuotas(codCredito: str, db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.obtener_credito(db, codCredito)["cuotas"]
 
 
 @app.get("/creditos/{codCredito}/monto-a-pagar", tags=[TCO],
           summary="Monto a pagar de la proxima cuota, desglosado en capital y mora (RF-COB-003)")
-def monto_a_pagar(codCredito: str, db=Depends(get_db)):
+def monto_a_pagar(codCredito: str, db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.monto_a_pagar(db, codCredito)
 
 
@@ -165,51 +175,53 @@ def recalcular_estado(
         codCredito: str,
         fechaReferencia: Optional[date] = Query(
             None, description="Opcional, por defecto hoy. Permite demostrar la transicion a EN_MORA."),
-        db=Depends(get_db)):
-    return S.recalcular_estado(db, codCredito, fechaReferencia)
+        db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_EJECUTAR"))):
+    return S.recalcular_estado(db, codCredito, fechaReferencia, usuario=rol)
 
 
 @app.get("/creditos/{codCredito}/pagos", tags=[TCO], summary="Historial de pagos")
-def pagos(codCredito: str, db=Depends(get_db)):
+def pagos(codCredito: str, db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.historial_pagos(db, codCredito)
 
 
 @app.get("/clientes/{idCliente}/creditos", tags=[TCL], summary="Creditos (con su cronograma) de un cliente")
-def creditos_por_cliente(idCliente: str, db=Depends(get_db)):
+def creditos_por_cliente(idCliente: str, db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.creditos_por_cliente(db, idCliente)
 
 
 @app.get("/clientes/{idCliente}/pagos", tags=[TCL], summary="Historial de pagos de un cliente")
-def pagos_por_cliente(idCliente: str, db=Depends(get_db)):
+def pagos_por_cliente(idCliente: str, db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.pagos_por_cliente(db, idCliente)
 
 
 @app.get("/pagos/{referenciaTransaccion}/comprobante", tags=[TCO], summary="Comprobante de un pago confirmado")
-def comprobante(referenciaTransaccion: str, db=Depends(get_db)):
+def comprobante(referenciaTransaccion: str, db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.comprobante(db, referenciaTransaccion)
 
 
 @app.get("/pagos/pendientes", tags=[TPP], summary="Pagos PENDIENTE con su antiguedad (RF-COB-011 / INC-01)")
-def pagos_pendientes(db=Depends(get_db)):
+def pagos_pendientes(db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.pagos_pendientes(db)
 
 
 @app.post("/pagos/{referenciaTransaccion}/resolver", tags=[TPP],
           summary="Resuelve un pago PENDIENTE consultando a Cuentas, sin repetir el cargo (RN-COB-009)")
-def resolver_pago(referenciaTransaccion: str, db=Depends(get_db)):
-    return S.resolver_pago(db, referenciaTransaccion, cuentas)
+def resolver_pago(
+        referenciaTransaccion: str, db=Depends(get_db),
+        rol: str = Depends(requerir_rol("COBRANZA_EJECUTAR"))):
+    return S.resolver_pago(db, referenciaTransaccion, cuentas, usuario=rol)
 
 
 @app.get("/conciliacion", tags=[TCI], summary="Conciliacion diaria: total cobrado vs aplicado (RF-COB-018)")
 def conciliacion(
         fecha: Optional[date] = Query(None, description="AAAA-MM-DD, por defecto hoy"),
-        db=Depends(get_db)):
-    return S.conciliacion(db, fecha)
+        db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
+    return S.conciliacion(db, fecha, usuario=rol)
 
 
 @app.get("/metricas", tags=[TME],
          summary="Tasa de fallas, pagos pendientes y p95 de POST /cr-int-08/pagos (I-05, sin metas)")
-def metricas(db=Depends(get_db)):
+def metricas(db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.metricas(db, p95_pago_ms=_percentil(_TIEMPOS_PAGO_MS, 95), muestras_pago=len(_TIEMPOS_PAGO_MS))
 
 
@@ -219,16 +231,20 @@ def registrar_mora(
         codCredito: str, numeroCuota: int, body: MoraIn,
         fechaReferencia: Optional[date] = Query(
             None, description="Opcional, por defecto hoy. Permite demostrar RN-COB-010 sin esperar al vencimiento real."),
-        db=Depends(get_db)):
+        db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_EJECUTAR"))):
     return S.registrar_mora(db, codCredito, numeroCuota, body.diasAtraso, body.montoCalculado,
-                             fecha_referencia=fechaReferencia)
+                             origen=rol, fecha_referencia=fechaReferencia)
 
 
 @app.get("/creditos/{codCredito}/cuotas/{numeroCuota}/mora", tags=[TMO], summary="Historial de mora de una cuota")
-def historial_mora(codCredito: str, numeroCuota: int, db=Depends(get_db)):
+def historial_mora(
+        codCredito: str, numeroCuota: int, db=Depends(get_db),
+        rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.historial_mora(db, codCredito, numeroCuota)
 
 
 @app.get("/auditoria", tags=[TAU], summary="Eventos de auditoria registrados")
-def auditoria(idEntidad: Optional[str] = None, limite: int = Query(50, ge=1, le=500), db=Depends(get_db)):
+def auditoria(
+        idEntidad: Optional[str] = None, limite: int = Query(50, ge=1, le=500),
+        db=Depends(get_db), rol: str = Depends(requerir_rol("COBRANZA_LEER"))):
     return S.auditoria(db, idEntidad, limite)

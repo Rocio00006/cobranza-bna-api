@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import servicio as S
 from app.db import conectar, crear_esquema
 from app.cuentas import CuentasSimulado
+from app.seguridad import SeguridadSimulada
 
 
 def obligacion(cod="CR-0001", cliente="CLI-0001"):
@@ -22,11 +23,12 @@ class PruebasParte2B(unittest.TestCase):
         self.db = conectar("sqlite:///:memory:")
         crear_esquema(self.db)
         self.cuentas = CuentasSimulado()
+        self.seguridad = SeguridadSimulada()
 
     # ---------------------------------------------------------- RF-COB-011 / INC-01
     def test_pagos_pendientes_lista_con_antiguedad(self):
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_pago(self.db, pago("OP-1", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-1", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         pend = S.pagos_pendientes(self.db)
         self.assertEqual(len(pend), 1)
         self.assertEqual(pend[0]["referenciaTransaccion"], "OP-1")
@@ -34,7 +36,7 @@ class PruebasParte2B(unittest.TestCase):
 
     def test_resolver_pago_confirmado_lo_aplica(self):
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_pago(self.db, pago("OP-1", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-1", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         r = S.resolver_pago(self.db, "OP-1", self.cuentas)  # consultar() por defecto: CONFIRMADO
         self.assertEqual(r["estado"], "CONFIRMADO")
         self.assertEqual(r["aplicacion"]["estadoCuota"], "PARCIAL")
@@ -43,21 +45,21 @@ class PruebasParte2B(unittest.TestCase):
 
     def test_resolver_pago_rechazado_al_consultar(self):
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_pago(self.db, pago("OP-1-RECHAZA", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-1-RECHAZA", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         r = S.resolver_pago(self.db, "OP-1-RECHAZA", self.cuentas)
         self.assertEqual(r["estado"], "RECHAZADO")
         self.assertIsNone(r["aplicacion"])
 
     def test_resolver_pago_sigue_sin_respuesta(self):
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_pago(self.db, pago("OP-1-SIGUESIN", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-1-SIGUESIN", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         r = S.resolver_pago(self.db, "OP-1-SIGUESIN", self.cuentas)
         self.assertEqual(r["estado"], "PENDIENTE")
         self.assertEqual(len(S.pagos_pendientes(self.db)), 1)
 
     def test_resolver_pago_no_pendiente_es_rechazado(self):
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_pago(self.db, pago("OP-1", "100.00"), self.cuentas)  # ya CONFIRMADO
+        S.registrar_pago(self.db, pago("OP-1", "100.00"), self.cuentas, self.seguridad, "TOKEN-VALIDO")  # ya CONFIRMADO
         with self.assertRaises(S.ErrorNegocio) as e:
             S.resolver_pago(self.db, "OP-1", self.cuentas)
         self.assertEqual(e.exception.status, 409)
@@ -69,14 +71,14 @@ class PruebasParte2B(unittest.TestCase):
                 raise AssertionError("resolver_pago no debe reintentar el cargo (RN-COB-009)")
 
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_pago(self.db, pago("OP-1", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-1", "100.00", cuenta="SIN-RESPUESTA"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         r = S.resolver_pago(self.db, "OP-1", CuentasSinCargar())
         self.assertEqual(r["estado"], "CONFIRMADO")
 
     def test_resolver_pago_requiere_revision_si_la_cuota_cambio(self):
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_pago(self.db, pago("OP-PEND", "400.00", cuenta="SIN-RESPUESTA"), self.cuentas)  # no toca la cuota
-        S.registrar_pago(self.db, pago("OP-OTRO", "100.00"), self.cuentas)  # confirma: saldo baja a 300
+        S.registrar_pago(self.db, pago("OP-PEND", "400.00", cuenta="SIN-RESPUESTA"), self.cuentas, self.seguridad, "TOKEN-VALIDO")  # no toca la cuota
+        S.registrar_pago(self.db, pago("OP-OTRO", "100.00"), self.cuentas, self.seguridad, "TOKEN-VALIDO")  # confirma: saldo baja a 300
         r = S.resolver_pago(self.db, "OP-PEND", self.cuentas)  # 400 > 300 adeudado ahora
         self.assertEqual(r["estado"], "REQUIERE_REVISION")
         tipos = {e["tipoEvento"] for e in S.auditoria(self.db)}
@@ -86,9 +88,9 @@ class PruebasParte2B(unittest.TestCase):
     def test_conciliacion_cobrado_aplicado_y_detalle(self):
         S.activar_obligacion(self.db, obligacion(cod="CR-A"))
         S.activar_obligacion(self.db, obligacion(cod="CR-B"))
-        S.registrar_pago(self.db, pago("OP-OK", "100.00", cod="CR-A"), self.cuentas)  # CONFIRMADO
-        S.registrar_pago(self.db, pago("OP-PEND", "50.00", cuenta="SIN-RESPUESTA", cod="CR-B"), self.cuentas)
-        S.registrar_pago(self.db, pago("OP-MAL", "10.00", cuenta="SIN-FONDOS", cod="CR-B"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-OK", "100.00", cod="CR-A"), self.cuentas, self.seguridad, "TOKEN-VALIDO")  # CONFIRMADO
+        S.registrar_pago(self.db, pago("OP-PEND", "50.00", cuenta="SIN-RESPUESTA", cod="CR-B"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
+        S.registrar_pago(self.db, pago("OP-MAL", "10.00", cuenta="SIN-FONDOS", cod="CR-B"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
 
         c = S.conciliacion(self.db)
         self.assertEqual(c["totalCobrado"], Decimal("100.00"))
@@ -103,8 +105,8 @@ class PruebasParte2B(unittest.TestCase):
 
     def test_conciliacion_refleja_requiere_revision_como_diferencia(self):
         S.activar_obligacion(self.db, obligacion(cod="CR-A"))
-        S.registrar_pago(self.db, pago("OP-PEND", "400.00", cuenta="SIN-RESPUESTA", cod="CR-A"), self.cuentas)
-        S.registrar_pago(self.db, pago("OP-OTRO", "100.00", cod="CR-A"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-PEND", "400.00", cuenta="SIN-RESPUESTA", cod="CR-A"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
+        S.registrar_pago(self.db, pago("OP-OTRO", "100.00", cod="CR-A"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         S.resolver_pago(self.db, "OP-PEND", self.cuentas)  # 400 > 300 -> REQUIERE_REVISION
 
         c = S.conciliacion(self.db)
@@ -116,9 +118,9 @@ class PruebasParte2B(unittest.TestCase):
     # ---------------------------------------------------------- I-05
     def test_metricas_tasa_de_fallas_y_pendientes(self):
         S.activar_obligacion(self.db, obligacion(cod="CR-A"))
-        S.registrar_pago(self.db, pago("OP-OK", "100.00", cod="CR-A"), self.cuentas)
-        S.registrar_pago(self.db, pago("OP-MAL", "10.00", cuenta="SIN-FONDOS", cod="CR-A"), self.cuentas)
-        S.registrar_pago(self.db, pago("OP-PEND", "10.00", cuenta="SIN-RESPUESTA", cod="CR-A"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-OK", "100.00", cod="CR-A"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
+        S.registrar_pago(self.db, pago("OP-MAL", "10.00", cuenta="SIN-FONDOS", cod="CR-A"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
+        S.registrar_pago(self.db, pago("OP-PEND", "10.00", cuenta="SIN-RESPUESTA", cod="CR-A"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         m = S.metricas(self.db)
         self.assertEqual(m["intentosValidos"], 3)
         self.assertEqual(m["pagosFallidos"], 2)
@@ -128,8 +130,8 @@ class PruebasParte2B(unittest.TestCase):
 
     def test_metricas_duplicado_no_cuenta_como_intento_nuevo(self):
         S.activar_obligacion(self.db, obligacion(cod="CR-A"))
-        S.registrar_pago(self.db, pago("OP-1", "100.00", cod="CR-A"), self.cuentas)
-        S.registrar_pago(self.db, pago("OP-1", "100.00", cod="CR-A"), self.cuentas)  # idempotente
+        S.registrar_pago(self.db, pago("OP-1", "100.00", cod="CR-A"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
+        S.registrar_pago(self.db, pago("OP-1", "100.00", cod="CR-A"), self.cuentas, self.seguridad, "TOKEN-VALIDO")  # idempotente
         self.assertEqual(S.metricas(self.db)["intentosValidos"], 1)
 
 

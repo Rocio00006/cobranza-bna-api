@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS EVENTO_AUDITORIA (
         tipoEvento VARCHAR(30) NOT NULL,
         `timestamp` DATETIME NOT NULL,
         moduloEmisor VARCHAR(30) NOT NULL,
-        usuarioOperador VARCHAR(30) NOT NULL
+        usuarioOperador VARCHAR(30) NOT NULL,
+        resultado VARCHAR(20) NOT NULL DEFAULT 'EXITOSO'
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT IGNORE INTO CANAL_PAGO (idCanal, nombreCanal, tipoIntegracion) VALUES ('HB', 'Home Banking', 'API REST via Bus de Servicios');

@@ -18,7 +18,18 @@ Implementa el flujo de pago de cuotas respetando las reglas RN-COB y las interfa
 | RF-COB-011 / INC-01 | `POST /pagos/{ref}/resolver` | Consulta a Cuentas el estado de un pago `PENDIENTE` (nunca repite el cargo) y lo resuelve |
 | RF-COB-018 | `GET /conciliacion?fecha=AAAA-MM-DD` | Total cobrado vs aplicado del día, diferencia y detalle de pendientes/rechazados/`REQUIERE_REVISION` |
 | I-05 | `GET /metricas` | Tasa de fallas de operación, pagos pendientes y p95 de `POST /cr-int-08/pagos` (sin metas) |
-| CR-INT-10 | `GET /auditoria` | Eventos de trazabilidad (registro local) |
+| CR-INT-10 | `GET /auditoria` | Eventos de trazabilidad, con `resultado` (registro local) |
+
+### Autenticación y roles (I-04)
+Todo endpoint (excepto `/salud`) exige el header `X-API-Key`. Sin clave → `401`; clave de un rol sin permiso → `403`. El botón **Authorize** de Swagger (`/docs`) pide la clave una sola vez para toda la sesión.
+
+| Rol | Clave de entorno | Acceso |
+|---|---|---|
+| `COBRANZA_LEER` | `API_KEY_COBRANZA_LEER` | Consultas, auditoría, conciliación, métricas |
+| `COBRANZA_EJECUTAR` | `API_KEY_COBRANZA_EJECUTAR` | Mora, `recalcular-estado`, `resolver` pagos pendientes |
+| `INTEGRACION_BUS` | `API_KEY_INTEGRACION_BUS` | `POST /cr-int-06/obligaciones`, `POST /cr-int-08/pagos` |
+
+`POST /cr-int-08/pagos` exige además el header `X-Token-Seguridad` (RF-COB-004, ver Supuestos).
 
 ## Reglas implementadas
 | Regla | Comportamiento |
@@ -37,6 +48,8 @@ Implementa el flujo de pago de cuotas respetando las reglas RN-COB y las interfa
 | RF-COB-008 / 013 | El comprobante muestra `montoAplicadoMora` y `montoAplicadoCapital` del pago |
 | RF-COB-011 / INC-01 | Un pago `PENDIENTE` se resuelve consultando a Cuentas por su `idOperacion`, nunca repitiendo el cargo; si Cuentas confirma pero la cuota ya cambió, queda `REQUIERE_REVISION` |
 | RF-COB-018 / INC-02 | La conciliación compara lo cobrado (`CONFIRMADO` + `REQUIERE_REVISION`) contra lo aplicado (`APLICACION_PAGO`); la diferencia delata pagos `REQUIERE_REVISION` |
+| RF-COB-004 (PROPUESTA) | `POST /cr-int-08/pagos` exige `X-Token-Seguridad`; `TOKEN-INVALIDO` se rechaza y 3 rechazos seguidos del mismo cliente bloquean sus pagos temporalmente |
+| RN-CR-GEN-004 | `usuarioOperador` de la auditoría es el rol (`X-API-Key`) que hizo la llamada |
 
 ## Instalación
 Requisitos: Python 3.10 o superior y MySQL 8.
@@ -44,17 +57,23 @@ Requisitos: Python 3.10 o superior y MySQL 8.
 pip install -r requirements.txt
 ```
 En MySQL: `CREATE DATABASE cobranza_bna CHARACTER SET utf8mb4;`
-Copia `.env.example` como `.env` y ajusta `DATABASE_URL`. Las tablas se crean solas al iniciar.
-(`schema_mysql.sql` queda como alternativa manual.)
+Copia `.env.example` como `.env`, ajusta `DATABASE_URL` y define tus propias `API_KEY_COBRANZA_LEER` /
+`API_KEY_COBRANZA_EJECUTAR` / `API_KEY_INTEGRACION_BUS` (nunca las subas al repositorio). Las tablas se
+crean solas al iniciar. (`schema_mysql.sql` queda como alternativa manual.)
 
 ## Ejecución
 ```
 uvicorn app.main:app --reload --port 8000
 ```
-Swagger: http://localhost:8000/docs  (`/salud` confirma que la API está arriba).
+Swagger: http://localhost:8000/docs (`/salud` confirma que la API está arriba, sin clave). En **Authorize**
+pega el valor de una de las `API_KEY_*` del `.env` para probar el resto de endpoints.
 
 ## Guion del video (4 a 5 minutos)
-Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado. No muestres la clave.
+Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado. No muestres la clave
+de MySQL ni el valor real de las `API_KEY_*` (usa el botón **Authorize** fuera de cámara o difumínalas).
+Desde el paso 2, cada llamada necesita la `X-API-Key` del rol correspondiente (ver tabla de roles); los
+pagos (`POST /cr-int-08/pagos`) necesitan además `X-Token-Seguridad` (cualquier valor que no sea
+`TOKEN-INVALIDO` ni esté vacío, por ejemplo `TOKEN-DEMO-0001`).
 
 1. **Base vacía:** `SELECT COUNT(*) FROM CREDITO;` da 0.
 2. **Desembolso activa el crédito:** `POST /cr-int-06/obligaciones` con el ejemplo de Swagger.
@@ -77,7 +96,11 @@ Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado
 16. **REQUIERE_REVISION:** repite el caso 14 con `OP-0007` sobre una cuota que luego se termina de pagar por otra vía mientras `OP-0007` sigue pendiente; al resolver `OP-0007`, Cuentas confirma pero el monto ya no cabe en lo adeudado → `REQUIERE_REVISION`.
 17. **Conciliación (RF-COB-018):** `GET /conciliacion` (fecha de hoy) muestra `totalCobrado`, `totalAplicado`, la `diferencia` (el `REQUIERE_REVISION` del paso 16) y el detalle de pendientes/rechazados/`REQUIERE_REVISION`.
 18. **Métricas (I-05):** `GET /metricas` muestra la tasa de fallas, los pagos pendientes y el p95 de `POST /cr-int-08/pagos` medido durante la grabación (sin metas numéricas).
-19. **Auditoría:** `GET /auditoria` y en MySQL: ``SELECT tipoEvento, idEntidad, `timestamp` FROM EVENTO_AUDITORIA ORDER BY `timestamp`;``
+19. **Auditoría:** `GET /auditoria` y en MySQL: ``SELECT tipoEvento, idEntidad, `timestamp`, resultado FROM EVENTO_AUDITORIA ORDER BY `timestamp`;``
+20. **Sin clave (I-04):** quita la clave del botón Authorize y repite el paso 2. Responde `401`.
+21. **Rol insuficiente:** pon la clave de `COBRANZA_LEER` y repite el paso 2 (`POST /cr-int-06/obligaciones`, que exige `INTEGRACION_BUS`). Responde `403`.
+22. **Token de Seguridad inválido (RF-COB-004):** con la clave de `INTEGRACION_BUS`, repite un pago con `X-Token-Seguridad: TOKEN-INVALIDO`. Responde `401` con la regla RF-COB-004.
+23. **Bloqueo temporal:** repite el paso 22 tres veces seguidas para el mismo `codCliente`. El tercer rechazo bloquea sus pagos; un cuarto intento, aunque mande un token válido, sigue bloqueado hasta que pase `SEGURIDAD_BLOQUEO_SEGUNDOS`.
 
 ## Supuestos
 - **Mora:** la fórmula y quién la calcula están pendientes del Comité (RN-COB-005). Cobranza no calcula ni asume tasa: guarda la mora que recibe en `CUOTA.moraPendiente`, **separada del capital** (`CUOTA.saldoPendiente`). Un recálculo reemplaza el valor vigente (no se suma) y el historial completo queda en la tabla `MORA` (campo `vigente`). **RN-COB-010:** se rechaza (422) si la cuota aún no venció respecto de la fecha de referencia (por defecto hoy; `fechaReferencia` opcional en el endpoint, igual que en `recalcular-estado`, para poder demostrarlo) o si `diasAtraso` es 0 con `montoCalculado` mayor a cero.
@@ -90,20 +113,23 @@ Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado
 - **Resolución de pagos pendientes (RF-COB-011/INC-01):** `POST /pagos/{ref}/resolver` solo **consulta** a Cuentas (`consultar(referencia)`), nunca vuelve a llamar `cargar` (RN-COB-009: un cargo incierto no se reintenta). Si Cuentas confirma pero, mientras el pago estuvo pendiente, la cuota cambió y el monto ya no cabe en lo adeudado, el dinero ya fue cobrado pero no se puede aplicar sin más: el pago queda `REQUIERE_REVISION` con su evento de auditoría. **La política de reversión/reasignación de ese dinero está pendiente del Comité** (hoy el pago simplemente se marca, no se decide su destino). El simulador de Cuentas (`CuentasSimulado.consultar`) responde `CONFIRMADO` por defecto (para poder demostrar que un pago "SIN-RESPUESTA" se resuelve); una `referenciaTransaccion` terminada en `-RECHAZA` o `-SIGUESIN` fuerza los otros dos desenlaces.
 - **Conciliación (RF-COB-018):** compara `totalCobrado` (pagos `CONFIRMADO` + `REQUIERE_REVISION` del día, dinero que Cuentas sí cargó) contra `totalAplicado` (suma de `APLICACION_PAGO` de pagos `CONFIRMADO`). Si ambos no coinciden es porque hay pagos `REQUIERE_REVISION` (cobrados, no aplicados a ninguna cuota). `pagosPendientes` no se filtra por día: es un backlog abierto (lo importante es su antigüedad, no cuándo se creó).
 - **Tasa de fallas (I-05):** `pagosFallidos / intentosValidos`, donde `intentosValidos` es la cantidad de filas en `PAGO` (los rechazos por datos inválidos no llegan a crear una fila, y un duplicado idempotente tampoco crea una fila nueva) y `pagosFallidos` cuenta `RECHAZADO` + `PENDIENTE` + `REQUIERE_REVISION`. Es una definición propuesta por el equipo de desarrollo, no una fórmula del Comité; **sin metas numéricas**, solo se reporta el valor medido.
+- **Roles (I-04):** autenticación **simple** por `X-API-Key` (una clave por rol, no por usuario individual), PROPUESTA del equipo de desarrollo para evidenciar el requerimiento; no reemplaza una autenticación real (OAuth, usuarios con contraseña, etc.) que debería definir el Comité/Seguridad. Las claves solo viven en `.env` (nunca en el código ni en el repositorio).
+- **Token de Seguridad (RF-COB-004):** PROPUESTA pendiente del Comité. `app/seguridad.py` simula el validador (igual que `app/cuentas.py` simula Cuentas): no es antifraude real. `TOKEN-INVALIDO` o un token vacío se rechazan; tras `SEGURIDAD_LIMITE_RECHAZOS` (3 por defecto) rechazos **consecutivos** del mismo `codCliente`, sus pagos quedan bloqueados por `SEGURIDAD_BLOQUEO_SEGUNDOS` (300 por defecto, configurable en `.env`). Un token válido reinicia el contador. El estado de bloqueo vive en memoria del proceso (se pierde si la API se reinicia) y cada rechazo queda en `EVENTO_AUDITORIA` (`TOKEN_SEGURIDAD_RECHAZADO`).
+- **Campo `resultado` (CR-INT-10):** la matriz oficial lo pide y `EVENTO_AUDITORIA` no lo tenía; se agregó como `EXITOSO` por defecto, con `RECHAZADO`/`PENDIENTE`/`REVISION` para los eventos que no son un éxito liso y llano (ver CLAUDE.md, "Cambios respecto al diccionario de datos de Fase II").
 
 ## Qué falta
 - Probar la integración con los módulos reales: Desembolso, Cuentas y Home Banking.
 - Envío de eventos a Seguridad/Auditoría (hoy solo se registran localmente).
-- Autenticación y permisos por rol (LIDER_COBRANZA).
+- Autenticación real (hoy es una clave simple por rol, no por usuario; ver Supuestos) y antifraude real para RF-COB-004 (hoy simulado).
 - Recordatorios y notificaciones (fuera de alcance, RF-COB-006/014).
 - Consulta por DNI (hoy solo por `idCliente`; ver Supuestos).
 - Política de reversión/reasignación del dinero de un pago `REQUIERE_REVISION` (RF-COB-011; hoy solo se marca, no se decide su destino).
-- Reglas pendientes del Comité: fórmula y responsable de la mora, propietario del calendario, tratamiento de excedentes, orden de imputación del pago, catálogo definitivo de estados.
+- Reglas pendientes del Comité: fórmula y responsable de la mora, propietario del calendario, tratamiento de excedentes, orden de imputación del pago, catálogo definitivo de estados, umbral y duración del bloqueo de RF-COB-004.
 - Metas numéricas de los indicadores de I-05 (hoy solo se mide, sin umbrales).
 - Pruebas de integración en el ambiente de Testing y despliegue.
 
 ## Pruebas automáticas
-La lógica de negocio tiene 43 pruebas (con SQLite, sin necesidad de MySQL):
+La lógica de negocio tiene 53 pruebas (con SQLite, sin necesidad de MySQL):
 ```
 python -m unittest discover -s tests -v
 ```

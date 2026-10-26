@@ -149,7 +149,8 @@ DDL = [
         tipoEvento VARCHAR(30) NOT NULL,
         `timestamp` DATETIME NOT NULL,
         moduloEmisor VARCHAR(30) NOT NULL,
-        usuarioOperador VARCHAR(30) NOT NULL
+        usuarioOperador VARCHAR(30) NOT NULL,
+        resultado VARCHAR(20) NOT NULL DEFAULT 'EXITOSO'
     )""",
 ]
 
@@ -161,6 +162,7 @@ COLUMNAS_NUEVAS = [
     ("CUOTA", "moraPendiente", "DECIMAL(14,2) NOT NULL DEFAULT 0.00"),
     ("PAGO", "montoMora", "DECIMAL(14,2) NOT NULL DEFAULT 0.00"),
     ("PAGO", "montoCapital", "DECIMAL(14,2) NOT NULL DEFAULT 0.00"),
+    ("EVENTO_AUDITORIA", "resultado", "VARCHAR(20) NOT NULL DEFAULT 'EXITOSO'"),
 ]
 
 

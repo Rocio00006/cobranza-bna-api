@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import servicio as S
 from app.db import conectar, crear_esquema
 from app.cuentas import CuentasSimulado
+from app.seguridad import SeguridadSimulada
 
 
 def obligacion(cod="CR-0001", cliente="CLI-0001", vencimientos=("2026-11-05", "2026-12-05", "2027-01-05")):
@@ -25,6 +26,7 @@ class PruebasParte2A(unittest.TestCase):
         self.db = conectar("sqlite:///:memory:")
         crear_esquema(self.db)
         self.cuentas = CuentasSimulado()
+        self.seguridad = SeguridadSimulada()
 
     # ---------------------------------------------------------- RF-COB-003
     def test_monto_a_pagar_desglosa_capital_y_mora(self):
@@ -44,7 +46,7 @@ class PruebasParte2A(unittest.TestCase):
     def test_monto_a_pagar_sin_cuotas_pendientes_es_rechazado(self):
         S.activar_obligacion(self.db, obligacion())
         for i, m in enumerate(("400.00", "400.00", "400.00"), 1):
-            S.registrar_pago(self.db, pago(f"OP-{i}", m), self.cuentas)
+            S.registrar_pago(self.db, pago(f"OP-{i}", m), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         with self.assertRaises(S.ErrorNegocio) as e:
             S.monto_a_pagar(self.db, "CR-0001")
         self.assertEqual(e.exception.regla, "RF-COB-003")
@@ -65,7 +67,7 @@ class PruebasParte2A(unittest.TestCase):
     def test_estado_se_recalcula_tras_pago_y_evento_queda_en_auditoria(self):
         S.activar_obligacion(self.db, obligacion(vencimientos=("2020-01-01", "2026-12-05", "2027-01-05")))
         self.assertEqual(S.obtener_credito(self.db, "CR-0001")["estadoCredito"], "EN_MORA")
-        S.registrar_pago(self.db, pago("OP-1", "400.00"), self.cuentas)  # paga la cuota vencida por completo
+        S.registrar_pago(self.db, pago("OP-1", "400.00"), self.cuentas, self.seguridad, "TOKEN-VALIDO")  # paga la cuota vencida por completo
         self.assertEqual(S.obtener_credito(self.db, "CR-0001")["estadoCredito"], "AL_DIA")
         tipos = {e["tipoEvento"] for e in S.auditoria(self.db, "CR-0001")}
         self.assertIn("CREDITO_EN_MORA", tipos)
@@ -75,7 +77,7 @@ class PruebasParte2A(unittest.TestCase):
     def test_comprobante_desglosa_cuanto_fue_mora_y_cuanto_capital(self):
         S.activar_obligacion(self.db, obligacion())
         S.registrar_mora(self.db, "CR-0001", 1, 5, "50.00", fecha_referencia="2026-11-10")
-        S.registrar_pago(self.db, pago("OP-1", "100.00"), self.cuentas)  # orden: mora primero
+        S.registrar_pago(self.db, pago("OP-1", "100.00"), self.cuentas, self.seguridad, "TOKEN-VALIDO")  # orden: mora primero
         c = S.comprobante(self.db, "OP-1")
         self.assertEqual(c["montoAplicadoMora"], Decimal("50.00"))
         self.assertEqual(c["montoAplicadoCapital"], Decimal("50.00"))
@@ -86,7 +88,7 @@ class PruebasParte2A(unittest.TestCase):
         S.activar_obligacion(self.db, obligacion())
         S.registrar_mora(self.db, "CR-0001", 1, 5, "50.00", fecha_referencia="2026-11-10")  # total: 450.00
         with self.assertRaises(S.ErrorNegocio) as e:
-            S.registrar_pago(self.db, pago("OP-1", "500.00"), self.cuentas)
+            S.registrar_pago(self.db, pago("OP-1", "500.00"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
         self.assertEqual(e.exception.regla, "RN-COB-011")
 
     # ---------------------------------------------------------- RN-COB-010
@@ -114,8 +116,8 @@ class PruebasParte2A(unittest.TestCase):
         S.activar_obligacion(self.db, obligacion(cod="CR-A", cliente="CLI-X"))
         S.activar_obligacion(self.db, obligacion(cod="CR-B", cliente="CLI-X"))
         S.activar_obligacion(self.db, obligacion(cod="CR-C", cliente="CLI-OTRO"))
-        S.registrar_pago(self.db, pago("OP-A1", "100.00", cod="CR-A", cliente="CLI-X"), self.cuentas)
-        S.registrar_pago(self.db, pago("OP-B1", "100.00", cod="CR-B", cliente="CLI-X"), self.cuentas)
+        S.registrar_pago(self.db, pago("OP-A1", "100.00", cod="CR-A", cliente="CLI-X"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
+        S.registrar_pago(self.db, pago("OP-B1", "100.00", cod="CR-B", cliente="CLI-X"), self.cuentas, self.seguridad, "TOKEN-VALIDO")
 
         creditos = S.creditos_por_cliente(self.db, "CLI-X")
         self.assertEqual({c["codCredito"] for c in creditos}, {"CR-A", "CR-B"})

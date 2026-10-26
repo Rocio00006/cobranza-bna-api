@@ -45,16 +45,18 @@ def nuevo_id(prefijo):
     return f"{prefijo}-{uuid.uuid4().hex[:8].upper()}"
 
 
-def registrar_evento(db, id_entidad, tipo, usuario="sistema", modulo="COBRANZA"):
-    """RN-CR-GEN-004 / CR-INT-10: trazabilidad de cada cambio de estado (registro local)."""
+def registrar_evento(db, id_entidad, tipo, usuario="sistema", modulo="COBRANZA", resultado="EXITOSO"):
+    """RN-CR-GEN-004 / CR-INT-10: trazabilidad de cada cambio de estado (registro local).
+    usuarioOperador se toma del rol (X-API-Key) que hizo la llamada HTTP cuando aplica; resultado es el
+    campo de CR-INT-10 que faltaba en el diccionario de Fase II (ver CLAUDE.md)."""
     db.ejecutar(
-        "INSERT INTO EVENTO_AUDITORIA (idEvento, idEntidad, tipoEvento, `timestamp`, moduloEmisor, usuarioOperador) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
-        (nuevo_id("EVT"), id_entidad, tipo, ahora(), modulo, usuario),
+        "INSERT INTO EVENTO_AUDITORIA (idEvento, idEntidad, tipoEvento, `timestamp`, moduloEmisor, "
+        "usuarioOperador, resultado) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (nuevo_id("EVT"), id_entidad, tipo, ahora(), modulo, usuario, resultado),
     )
 
 
-def recalcular_estado_credito(db, cod, fecha_referencia=None):
+def recalcular_estado_credito(db, cod, fecha_referencia=None, usuario="sistema"):
     """RF-COB-007: catalogo PROVISIONAL (ESTADOS_CREDITO), pendiente de definicion del Comite.
     EN_MORA si alguna cuota con saldo (capital o mora) vencio antes de fecha_referencia (por defecto hoy).
     CANCELADO es terminal: no se recalcula. No hace commit; el llamador decide la transaccion."""
@@ -68,16 +70,16 @@ def recalcular_estado_credito(db, cod, fecha_referencia=None):
     nuevo_estado = "EN_MORA" if vencida["n"] > 0 else "AL_DIA"
     if nuevo_estado != cred["estadoCredito"]:
         db.ejecutar("UPDATE CREDITO SET estadoCredito = %s WHERE codCredito = %s", (nuevo_estado, cod))
-        registrar_evento(db, cod, f"CREDITO_{nuevo_estado}")
+        registrar_evento(db, cod, f"CREDITO_{nuevo_estado}", usuario=usuario)
     return nuevo_estado
 
 
-def recalcular_estado(db, cod, fecha_referencia=None):
+def recalcular_estado(db, cod, fecha_referencia=None, usuario="sistema"):
     """Punto de entrada publico (endpoint manual) para recalcular el estado con una fecha de referencia
     a eleccion, util para demostrar la transicion a EN_MORA sin esperar al vencimiento real."""
     obtener_credito(db, cod)  # valida existencia (404 si no)
     try:
-        recalcular_estado_credito(db, cod, fecha_referencia)
+        recalcular_estado_credito(db, cod, fecha_referencia, usuario=usuario)
         db.commit()
     except Exception:
         db.rollback()
@@ -86,7 +88,7 @@ def recalcular_estado(db, cod, fecha_referencia=None):
 
 
 # ------------------------------------------------------------------ CR-INT-06
-def activar_obligacion(db, d):
+def activar_obligacion(db, d, usuario="DESEMBOLSO (CR-INT-06)"):
     """CR-INT-06 (Desembolso a Cobranza). RN-COB-001: solo se cobran creditos desembolsados y activados."""
     cod = d["codCredito"]
     monto = D(d["montoAprobado"])
@@ -119,8 +121,8 @@ def activar_obligacion(db, d):
                 (nuevo_id("CU"), cod, int(c["numeroCuota"]), _fecha(c["fechaVencimiento"], True), mc, mc, CERO,
                  "PENDIENTE"),
             )
-        registrar_evento(db, cod, "OBLIGACION_ACTIVADA", usuario="DESEMBOLSO (CR-INT-06)")
-        recalcular_estado_credito(db, cod)  # por si el calendario ya trae una cuota vencida al activar
+        registrar_evento(db, cod, "OBLIGACION_ACTIVADA", usuario=usuario)
+        recalcular_estado_credito(db, cod, usuario=usuario)  # por si ya trae una cuota vencida al activar
         db.commit()
     except Exception:
         db.rollback()
@@ -211,7 +213,7 @@ def _resultado(db, id_pago, idempotente):
     }
 
 
-def _aplicar_a_cuota(db, id_pago, cod, cuota, monto, monto_mora, monto_capital):
+def _aplicar_a_cuota(db, id_pago, cod, cuota, monto, monto_mora, monto_capital, usuario="sistema"):
     """Aplica un pago ya CONFIRMADO a una cuota: registra APLICACION_PAGO, descuenta capital/mora,
     deja los eventos de auditoria y recalcula CANCELADO / AL_DIA / EN_MORA (RF-COB-007). No hace commit;
     el llamador decide la transaccion. Usado por registrar_pago y por resolver_pago (RF-COB-011)."""
@@ -225,16 +227,16 @@ def _aplicar_a_cuota(db, id_pago, cod, cuota, monto, monto_mora, monto_capital):
     nuevo_estado = "PAGADA" if (nuevo_capital == 0 and nueva_mora == 0) else "PARCIAL"
     db.ejecutar("UPDATE CUOTA SET saldoPendiente = %s, moraPendiente = %s, estadoCuota = %s WHERE idCuota = %s",
                 (nuevo_capital, nueva_mora, nuevo_estado, cuota["idCuota"]))
-    registrar_evento(db, id_pago, "PAGO_APLICADO")
-    registrar_evento(db, cuota["idCuota"], "CUOTA_" + nuevo_estado)
+    registrar_evento(db, id_pago, "PAGO_APLICADO", usuario=usuario)
+    registrar_evento(db, cuota["idCuota"], "CUOTA_" + nuevo_estado, usuario=usuario)
     pend = db.uno(
         "SELECT COUNT(*) AS n FROM CUOTA WHERE codCredito = %s AND (saldoPendiente > 0 OR moraPendiente > 0)",
         (cod,))
     if pend["n"] == 0:
         db.ejecutar("UPDATE CREDITO SET estadoCredito = %s WHERE codCredito = %s", ("CANCELADO", cod))
-        registrar_evento(db, cod, "CREDITO_CANCELADO")
+        registrar_evento(db, cod, "CREDITO_CANCELADO", usuario=usuario)
     else:
-        recalcular_estado_credito(db, cod)
+        recalcular_estado_credito(db, cod, usuario=usuario)
 
 
 def _split_imputacion(monto, saldo_capital, mora_pendiente):
@@ -249,8 +251,17 @@ def _split_imputacion(monto, saldo_capital, mora_pendiente):
 
 
 # ------------------------------------------------------------------ CR-INT-08 y CR-INT-07
-def registrar_pago(db, d, cuentas):
-    """CR-INT-08 (Home Banking a Cobranza). Aplica RN-COB-001/002/003/004/006/009/011/012 y RN-INT-CR-006."""
+def registrar_pago(db, d, cuentas, seguridad, token_seguridad, usuario="HOME BANKING (CR-INT-08)"):
+    """CR-INT-08 (Home Banking a Cobranza). Aplica RN-COB-001/002/003/004/006/009/011/012 y RN-INT-CR-006.
+    RF-COB-004 (PROPUESTA, pendiente del Comite): valida X-Token-Seguridad con el validador de Seguridad
+    simulado antes que cualquier otra cosa; tras 3 rechazos seguidos para el mismo cliente, sus pagos
+    quedan bloqueados temporalmente (ver app/seguridad.py)."""
+    ok_seg, motivo_seg = seguridad.validar(d["codCliente"], token_seguridad)
+    if not ok_seg:
+        registrar_evento(db, d["codCliente"], "TOKEN_SEGURIDAD_RECHAZADO", usuario=usuario, resultado="RECHAZADO")
+        db.commit()
+        raise ErrorNegocio(401, motivo_seg, "RF-COB-004")
+
     ref = d["referenciaTransaccion"]
     previo = db.uno("SELECT idPago FROM PAGO WHERE referenciaTransaccion = %s", (ref,))
     if previo:  # idempotencia: el mismo identificador no genera un segundo pago
@@ -291,7 +302,7 @@ def registrar_pago(db, d, cuentas):
             "INSERT INTO PAGO (idPago, codCredito, idCanal, fechaHora, montoPago, montoMora, montoCapital, "
             "referenciaTransaccion, estadoConfirmacion) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (id_pago, d["codCredito"], id_canal, ahora(), monto, monto_mora, monto_capital, ref, "PENDIENTE"))
-        registrar_evento(db, id_pago, "PAGO_REGISTRADO", usuario="HOME BANKING (CR-INT-08)")
+        registrar_evento(db, id_pago, "PAGO_REGISTRADO", usuario=usuario)
         db.commit()
     except Exception:
         db.rollback()
@@ -303,12 +314,12 @@ def registrar_pago(db, d, cuentas):
     try:
         if estado == "CONFIRMADO":
             db.ejecutar("UPDATE PAGO SET estadoConfirmacion = %s WHERE idPago = %s", ("CONFIRMADO", id_pago))
-            _aplicar_a_cuota(db, id_pago, d["codCredito"], cuota, monto, monto_mora, monto_capital)
+            _aplicar_a_cuota(db, id_pago, d["codCredito"], cuota, monto, monto_mora, monto_capital, usuario=usuario)
         elif estado == "RECHAZADO":  # RN-COB-009: la cuota no se cierra sin confirmacion
             db.ejecutar("UPDATE PAGO SET estadoConfirmacion = %s WHERE idPago = %s", ("RECHAZADO", id_pago))
-            registrar_evento(db, id_pago, "PAGO_RECHAZADO")
+            registrar_evento(db, id_pago, "PAGO_RECHAZADO", usuario=usuario, resultado="RECHAZADO")
         else:  # sin respuesta: queda PENDIENTE, no se cierra la cuota ni se reintenta el cargo
-            registrar_evento(db, id_pago, "PAGO_SIN_CONFIRMAR")
+            registrar_evento(db, id_pago, "PAGO_SIN_CONFIRMAR", usuario=usuario, resultado="PENDIENTE")
         db.commit()
     except Exception:
         db.rollback()
@@ -339,7 +350,7 @@ def pagos_pendientes(db):
     return out
 
 
-def resolver_pago(db, ref, cuentas):
+def resolver_pago(db, ref, cuentas, usuario="sistema"):
     """RF-COB-011 / INC-01: resuelve un pago que quedo PENDIENTE consultando a Cuentas por su
     idOperacion (RN-COB-009: un cargo incierto nunca se reintenta, solo se consulta).
     Si Cuentas confirma, se aplica con el estado ACTUAL de la cuota (pudo cambiar mientras el pago
@@ -356,7 +367,7 @@ def resolver_pago(db, ref, cuentas):
     estado, motivo = cuentas.consultar(ref)  # RN-COB-009: se consulta, nunca se reintenta el cargo
 
     if estado == "SIN_RESPUESTA":
-        registrar_evento(db, p["idPago"], "PAGO_SIN_CONFIRMAR")
+        registrar_evento(db, p["idPago"], "PAGO_SIN_CONFIRMAR", usuario=usuario, resultado="PENDIENTE")
         db.commit()
         r = _resultado(db, p["idPago"], False)
         r["motivo"] = motivo
@@ -365,7 +376,7 @@ def resolver_pago(db, ref, cuentas):
     if estado == "RECHAZADO":
         try:
             db.ejecutar("UPDATE PAGO SET estadoConfirmacion = %s WHERE idPago = %s", ("RECHAZADO", p["idPago"]))
-            registrar_evento(db, p["idPago"], "PAGO_RECHAZADO")
+            registrar_evento(db, p["idPago"], "PAGO_RECHAZADO", usuario=usuario, resultado="RECHAZADO")
             db.commit()
         except Exception:
             db.rollback()
@@ -384,7 +395,7 @@ def resolver_pago(db, ref, cuentas):
         if not cuota or monto > total_adeudado:
             db.ejecutar("UPDATE PAGO SET estadoConfirmacion = %s WHERE idPago = %s",
                         ("REQUIERE_REVISION", p["idPago"]))
-            registrar_evento(db, p["idPago"], "PAGO_REQUIERE_REVISION")
+            registrar_evento(db, p["idPago"], "PAGO_REQUIERE_REVISION", usuario=usuario, resultado="REVISION")
             db.commit()
             r = _resultado(db, p["idPago"], False)
             if not cuota:
@@ -402,7 +413,7 @@ def resolver_pago(db, ref, cuentas):
         db.ejecutar(
             "UPDATE PAGO SET estadoConfirmacion = %s, montoMora = %s, montoCapital = %s WHERE idPago = %s",
             ("CONFIRMADO", monto_mora, monto_capital, p["idPago"]))
-        _aplicar_a_cuota(db, p["idPago"], p["codCredito"], cuota, monto, monto_mora, monto_capital)
+        _aplicar_a_cuota(db, p["idPago"], p["codCredito"], cuota, monto, monto_mora, monto_capital, usuario=usuario)
         db.commit()
     except Exception:
         db.rollback()
@@ -483,7 +494,7 @@ def registrar_mora(db, cod, numero, dias_atraso, monto_calculado, origen="CORE (
             (id_mora, cuota["idCuota"], int(dias_atraso), monto, ahora(), 1))
         db.ejecutar("UPDATE CUOTA SET moraPendiente = %s WHERE idCuota = %s", (monto, cuota["idCuota"]))
         registrar_evento(db, cuota["idCuota"], "MORA_REGISTRADA", usuario=origen)
-        recalcular_estado_credito(db, cod)  # RF-COB-007
+        recalcular_estado_credito(db, cod, usuario=origen)  # RF-COB-007
         db.commit()
     except Exception:
         db.rollback()
@@ -509,7 +520,7 @@ def auditoria(db, id_entidad=None, limite=50):
         filas = db.todos("SELECT * FROM EVENTO_AUDITORIA ORDER BY `timestamp` DESC, idEvento LIMIT %s", (int(limite),))
     return [{"idEvento": f["idEvento"], "idEntidad": f["idEntidad"], "tipoEvento": f["tipoEvento"],
              "timestamp": str(f["timestamp"])[:19], "moduloEmisor": f["moduloEmisor"],
-             "usuarioOperador": f["usuarioOperador"]} for f in filas]
+             "usuarioOperador": f["usuarioOperador"], "resultado": f["resultado"]} for f in filas]
 
 
 # ------------------------------------------------------------------ RF-COB-018 / indicadores I-05
@@ -521,7 +532,7 @@ def _pagos_por_estado_y_fecha(db, estado, fecha):
              "fechaHora": str(f["fechaHora"])[:19], "montoPago": D(f["montoPago"])} for f in filas]
 
 
-def conciliacion(db, fecha=None):
+def conciliacion(db, fecha=None, usuario="sistema"):
     """RF-COB-018 (I-04/I-05): total cobrado (CONFIRMADO + REQUIERE_REVISION, dinero que Cuentas si
     cargo) vs total aplicado (APLICACION_PAGO, solo pagos CONFIRMADO que se abonaron a una cuota) del
     dia. La diferencia entre ambos delata pagos REQUIERE_REVISION (cobrados pero no aplicados).
@@ -539,7 +550,7 @@ def conciliacion(db, fecha=None):
     total_aplicado = D(aplicado["total"])
 
     try:
-        registrar_evento(db, f"CONCIL-{f}", "CONCILIACION_EJECUTADA")
+        registrar_evento(db, f"CONCIL-{f}", "CONCILIACION_EJECUTADA", usuario=usuario)
         db.commit()
     except Exception:
         db.rollback()

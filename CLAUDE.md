@@ -63,21 +63,40 @@ Agregados en Parte 2A, no están en el diccionario de Fase II todavía. Son colu
   Comité). Sin estas columnas el comprobante (RF-COB-008/013) no podría mostrar ese desglose después del
   pago, porque `APLICACION_PAGO.montoAplicado` solo guarda el total aplicado a la cuota.
 
+Agregado en Parte 2C, este SI esta en la matriz CR-INT-10 oficial (ver "Interfaces" arriba) pero
+`EVENTO_AUDITORIA` no lo tenia implementado; no es una desviacion del diccionario, es completar lo que
+la matriz ya pedia:
+- `EVENTO_AUDITORIA.resultado` VARCHAR(20) NOT NULL DEFAULT 'EXITOSO': la mayoria de eventos son
+  'EXITOSO' (transiciones de estado completadas); 'RECHAZADO' para PAGO_RECHAZADO y
+  TOKEN_SEGURIDAD_RECHAZADO, 'PENDIENTE' para PAGO_SIN_CONFIRMAR, 'REVISION' para PAGO_REQUIERE_REVISION.
+  El valor se decide explicitamente en cada `registrar_evento(...)`, no se infiere del tipoEvento.
+
 En MySQL, `app/db.py` agrega estas columnas con una migración idempotente (`migrar_esquema`, consulta
 `information_schema.columns`) porque `CREATE TABLE IF NOT EXISTS` no las agrega a una base ya creada en la
 Parte 1. En SQLite no hace falta: las pruebas siempre parten de un esquema nuevo.
 
 ## Requerimientos funcionales (Fase I) y estado en el código
 Hecho: RF-COB-001, 002 (por codCredito e idCliente; DNI pendiente, ver abajo), 003 (monto a pagar desglosado),
-005, 007 (catálogo provisional AL_DIA/EN_MORA/CANCELADO), 008 / 013 (comprobante con mora y capital
-desglosados), 010, 011 (pagos pendientes y su resolución, INC-01), 012 (por codCredito e idCliente),
-015, 016, 017 (rechazo), 018 (conciliación diaria, I-04/I-05).
+004 (PROPUESTA: token de Seguridad simulado, ver abajo), 005, 007 (catálogo provisional
+AL_DIA/EN_MORA/CANCELADO), 008 / 013 (comprobante con mora y capital desglosados), 010, 011 (pagos
+pendientes y su resolución, INC-01), 012 (por codCredito e idCliente), 015, 016, 017 (rechazo),
+018 (conciliación diaria, I-04/I-05).
 Parcial / falta:
 - RF-COB-002 / 012: consulta por DNI (hoy solo por idCliente; requiere interfaz con Clientes, aún no existe).
-- RF-COB-004: validación de identidad (PROPUESTA; simular token de Seguridad, no implementar antifraude real).
+- RF-COB-004: antifraude real (hoy `app/seguridad.py` simula el validador, igual que Cuentas); umbral y
+  duración del bloqueo son PROPUESTA (configurables, no definidos por el Comité).
 - RF-COB-011: política de reversión/reasignación del dinero de un pago REQUIERE_REVISION (hoy solo se marca).
-- Roles (I-04): COBRANZA_LEER (consultas, auditoría) y COBRANZA_EJECUTAR (pagos, mora). Simple: API key por rol.
 Fuera de alcance: RF-COB-006 (recordatorios) y RF-COB-014 (notificaciones).
+
+## Autenticación y roles (I-04)
+`app/auth.py`: header `X-API-Key`, una clave por rol (`API_KEY_<ROL>` en `.env`, nunca en el código).
+`COBRANZA_LEER` (consultas, auditoría, conciliación, métricas), `COBRANZA_EJECUTAR` (mora,
+`recalcular-estado`, `resolver` pagos pendientes), `INTEGRACION_BUS` (CR-INT-06, CR-INT-08). Sin clave →
+401; rol sin permiso → 403 (clase `ErrorNegocio`, mismo formato `{"detalle", "regla"}` que el resto de la
+API). `/salud` queda libre. El rol que autentica la llamada se pasa como `usuario` a
+`servicio.registrar_evento` (RN-CR-GEN-004: `usuarioOperador` = quien hizo la llamada), incluidos los
+eventos derivados dentro de la misma transacción (ej. `CUOTA_PAGADA`, `CREDITO_CANCELADO`). Es
+autenticación SIMPLE por rol (PROPUESTA), no reemplaza un sistema de usuarios real.
 
 Supuestos provisionales introducidos en Parte 2A, pendientes de definición del Comité (ver README):
 catálogo de estados del crédito (AL_DIA/EN_MORA/CANCELADO) y orden de imputación del pago
@@ -85,6 +104,9 @@ catálogo de estados del crédito (AL_DIA/EN_MORA/CANCELADO) y orden de imputaci
 En Parte 2B se agregó el estado PAGO.estadoConfirmacion = REQUIERE_REVISION (dinero ya cobrado por
 Cuentas que no se pudo aplicar porque la cuota cambió mientras el pago estaba PENDIENTE) y la definición
 de tasa de fallas de I-05 (ver "Prácticas ITIL" abajo): ambas son propuestas del equipo, no del Comité.
+En Parte 2C se agregaron las claves por rol y el bloqueo temporal de RF-COB-004 (umbral y duración
+configurables en `.env`, `SEGURIDAD_LIMITE_RECHAZOS` / `SEGURIDAD_BLOQUEO_SEGUNDOS`): igual, propuestas
+del equipo.
 
 ## Prácticas ITIL ya definidas (I-04 / I-05) que el código debe poder evidenciar
 - INC-01 pago no confirmado: `GET /pagos/pendientes` (antigüedad) y `POST /pagos/{ref}/resolver` (consulta
@@ -103,7 +125,7 @@ separados** (otro proceso/puerto) que respetan el contrato CR-INT. Documentar si
 con módulo real: pendiente porque el módulo aún no publica su API".
 
 ## Convenciones
-- Lógica nueva en `servicio.py` con su prueba en `tests/`. No romper las pruebas existentes (43 a la fecha).
+- Lógica nueva en `servicio.py` con su prueba en `tests/`. No romper las pruebas existentes (53 a la fecha).
 - Cada endpoint con `tags`, `summary` y ejemplo en Swagger, y citando la RN/RF que cumple.
 - No guardar credenciales en el código ni en el repositorio (`.env` está en `.gitignore`).
 - Decisiones pendientes del Comité: dejarlas como parámetro o rechazo explícito, nunca como valor inventado.

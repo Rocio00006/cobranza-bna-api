@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Banking BNA – Pago de cuotas (prototipo)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{--navy:#1B3A6B;--navy-d:#10284D;--amber:#F2B544;--ink:#16213A;--muted:#4A5568;--line:#DCE0E6;--ground:#F4F5F7;--mora:#9A3A0E}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:'Public Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums}
+button,input,select{font-family:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.app{min-height:100vh;display:flex;flex-direction:column}
+header{background:var(--navy);color:#fff;border-bottom:4px solid var(--amber)}
+.wrap{max-width:1040px;margin:0 auto;padding:16px 24px}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:40px;height:40px;border-radius:10px;background:var(--amber);color:var(--navy);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;letter-spacing:.5px}
+.brand b{display:block;font-size:17px}.brand small{display:block;font-size:13px;color:#D5DEEC}
+nav{display:flex;flex-wrap:wrap;gap:4px}
+nav button{background:transparent;color:#fff;border:0;padding:10px 14px;min-height:44px;border-radius:8px;font-size:15px;font-weight:600}
+nav button:hover{background:rgba(255,255,255,.12)}
+nav button.salir{background:rgba(255,255,255,.12)}
+main{flex:1;width:100%;max-width:1040px;margin:0 auto;padding:32px 24px 48px}
+h1{margin:0;font-size:28px;font-weight:700}
+h2{margin:0;font-size:18px;font-weight:700}
+.sub{margin:4px 0 0;font-size:15px;color:var(--muted)}
+.stack{display:flex;flex-direction:column;gap:20px}
+.narrow{max-width:640px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:12px}
+.row{display:flex;justify-content:space-between;gap:12px;font-size:16px}
+.row span:first-child{color:var(--muted)}
+.row.total{border-top:1px solid var(--line);padding-top:12px;font-size:20px;font-weight:700}
+.row.total span:first-child{color:var(--ink)}
+.mora{color:var(--mora);font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:12px}
+.btn{height:50px;padding:0 24px;border-radius:10px;font-size:16px;font-weight:600;border:0;background:var(--navy);color:#fff}
+.btn:hover{background:var(--navy-d)}
+.btn.sec{background:#fff;color:var(--navy);border:1px solid var(--navy)}
+.btn.sec:hover{background:#E6EDF8}
+.back{align-self:flex-start;background:transparent;border:0;padding:8px 0;min-height:44px;color:var(--navy);font-size:15px;font-weight:600}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+.metric{background:var(--ground);border-radius:12px;padding:16px}
+.metric span{display:block;font-size:13px;color:var(--muted)}.metric b{display:block;font-size:24px;margin-top:4px}
+.tbl{overflow-x:auto}
+table{width:100%;min-width:540px;border-collapse:collapse;font-size:15px}
+caption{text-align:left;font-weight:600;padding-bottom:8px}
+th{padding:10px 8px;font-size:13px;color:var(--muted);font-weight:600;text-align:left;border-bottom:1px solid var(--line)}
+td{padding:12px 8px;border-bottom:1px solid #EEF0F3}
+.r{text-align:right}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:600}
+.b-ok{background:#E3F3E8;color:#1F6B3A}.b-warn{background:#FCE9DD;color:var(--mora)}.b-info{background:#E6EDF8;color:var(--navy)}.b-neu{background:#EEF0F3;color:#3D4757}
+.opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.opt{min-height:64px;text-align:left;padding:12px 16px;border-radius:12px;background:#fff;border:1px solid #A7B0BE;color:var(--ink)}
+.opt[aria-pressed="true"]{background:#E6EDF8;border:2px solid var(--navy)}
+.opt b{display:block;font-size:15px}.opt span{display:block;font-size:14px;margin-top:2px}
+.field{display:flex;flex-direction:column;gap:8px}
+.field label{font-size:14px;font-weight:600}
+.field input,.field select{height:48px;border:1px solid #A7B0BE;border-radius:10px;padding:0 14px;font-size:16px;color:var(--ink);background:#fff}
+.hint{font-size:14px;color:var(--muted)}
+.err{margin:0;font-size:14px;font-weight:600;color:var(--mora)}
+.head-icon{display:flex;align-items:center;gap:14px}
+.ic{width:48px;height:48px;border-radius:24px;display:flex;align-items:center;justify-content:center;flex:none}
+.ic.ok{background:#E3F3E8}.ic.warn{background:#FCE9DD}.ic.info{background:#E6EDF8}
+.aviso{background:#FFF6E0;border-radius:10px;padding:14px;font-size:15px;line-height:1.5}
+p.txt{margin:0;font-size:16px;line-height:1.5}
+.login{display:flex;justify-content:center;padding-top:24px}
+.login .card{width:100%;max-width:420px;padding:32px;gap:20px}
+footer{border-top:1px solid var(--line);background:#fff}
+.foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.demo{background:#16213A;color:#fff;font-size:13px}
+.demo .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 24px}
+.demo label{display:flex;align-items:center;gap:6px}
+.demo select{height:32px;border-radius:6px;border:0;padding:0 8px;font-size:13px}
+.oculto .demo{display:none}
+@media (max-width:560px){.opts{grid-template-columns:1fr}h1{font-size:24px}}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var S0 = function (pantalla) {
+    return {
+      screen: pantalla || 'login', modo: 'total', montoTexto: '150.00', cuenta: 'Ahorros •••• 3456', error: '',
+      cuotas: [
+        { n: 1, vence: '05/11/2026', monto: 400, capital: 0, mora: 0, vencida: true, parcial: false },
+        { n: 2, vence: '05/12/2026', monto: 400, capital: 400, mora: 12.5, vencida: true, parcial: false },
+        { n: 3, vence: '05/01/2027', monto: 400, capital: 400, mora: 0, vencida: false, parcial: false }
+      ],
+      pagos: [
+        { ref: 'OP-0003', cuota: 2, monto: 100, estado: 'Rechazado' },
+        { ref: 'OP-0002', cuota: 1, monto: 250, estado: 'Confirmado' },
+        { ref: 'OP-0001', cuota: 1, monto: 150, estado: 'Confirmado' }
+      ],
+      ultimo: { ref: 'OP-0004', cuota: 2, monto: 412.5, mora: 12.5, capital: 400, saldo: 0, estadoCuota: 'Pagada' }
+    };
+  };
+  var st = S0(q.get('pantalla'));
+  var esc = { cuentas: q.get('cuentas') || 'confirmado', seguridad: q.get('seguridad') || 'normal' };
+  var ocultarDemo = q.get('demo') === '0';
+
+  function $(n) { return 'S/ ' + Number(n).toFixed(2); }
+  function r2(n) { return Math.round(n * 100) / 100; }
+  function badge(e) {
+    var c = 'b-neu';
+    if (['Pagada', 'Confirmado', 'Al día', 'Cancelado'].indexOf(e) >= 0) c = 'b-ok';
+    else if (['Vencida', 'Rechazado', 'En mora'].indexOf(e) >= 0) c = 'b-warn';
+    else if (['Parcial', 'En verificación'].indexOf(e) >= 0) c = 'b-info';
+    return '<span class="badge ' + c + '">' + e + '</span>';
+  }
+  function estadoCuota(c) { if (c.capital + c.mora <= 0) return 'Pagada'; if (c.parcial) return 'Parcial'; return c.vencida ? 'Vencida' : 'Pendiente'; }
+  function prox() { for (var i = 0; i < st.cuotas.length; i++) if (st.cuotas[i].capital + st.cuotas[i].mora > 0) return st.cuotas[i]; return null; }
+  function monto(p) {
+    if (!p) return 0;
+    if (st.modo === 'total') return r2(p.capital + p.mora);
+    var v = parseFloat(String(st.montoTexto).replace(',', '.')); return isNaN(v) ? 0 : r2(v);
+  }
+  function repartir(m, p) { var mo = Math.min(m, p ? p.mora : 0); return { mora: mo, capital: r2(m - mo) }; }
+  function estadoCredito() {
+    var pend = st.cuotas.filter(function (c) { return c.capital + c.mora > 0; });
+    if (!pend.length) return 'Cancelado';
+    return pend.some(function (c) { return c.vencida; }) ? 'En mora' : 'Al día';
+  }
+  function go(s, extra) { st.screen = s; st.error = ''; if (extra) for (var k in extra) st[k] = extra[k]; render(); window.scrollTo(0, 0); }
+
+  var IC = {
+    ok: '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1F6B3A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    warn: '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9A3A0E" stroke-width="2.5" stroke-linecap="round"><path d="M12 7v6"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9.5"/></svg>',
+    clock: '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1B3A6B" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 7v5l3 2"/></svg>',
+    lock: '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9A3A0E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
+  };
+  function row(a, b, cls) { return '<div class="row"><span>' + a + '</span><span' + (cls ? ' class="' + cls + '"' : '') + '>' + b + '</span></div>'; }
+  function head(icon, cls, titulo) { return '<div class="head-icon"><div class="ic ' + cls + '">' + IC[icon] + '</div><h1>' + titulo + '</h1></div>'; }
+
+  var V = {
+    login: function () {
+      return '<div class="login"><div class="card"><div><h1 style="font-size:26px">Ingresa a tu cuenta</h1><p class="sub">Paga tus cuotas de crédito en cualquier momento.</p></div>' +
+        '<div class="field"><label for="cli">Código de cliente</label><input id="cli" value="CLI-0001"></div>' +
+        '<div class="field"><label for="clave">Clave de internet</label><input id="clave" type="password" value="123456"></div>' +
+        '<button class="btn" data-a="ingresar">Ingresar</button><p class="hint" style="margin:0;font-size:13px">Tu sesión se valida con el servicio de Seguridad del banco.</p></div></div>';
+    },
+    creditos: function () {
+      var p = prox(), pend = st.cuotas.filter(function (c) { return c.capital + c.mora > 0; });
+      var total = pend.reduce(function (a, c) { return a + c.capital + c.mora; }, 0), ec = estadoCredito();
+      var filas = st.cuotas.map(function (c) {
+        return '<tr><td>' + c.n + '</td><td>' + c.vence + '</td><td class="r">' + $(c.monto) + '</td><td class="r' + (c.mora > 0 ? ' mora' : '') + '">' + (c.mora > 0 ? $(c.mora) : '—') +
+          '</td><td class="r" style="font-weight:600">' + $(c.capital + c.mora) + '</td><td>' + badge(estadoCuota(c)) + '</td></tr>';
+      }).join('');
+      return '<div class="stack"><div><h1>Hola, [NOMBRE DEL CLIENTE]</h1><p class="sub">Este es el estado de tus créditos.</p></div>' +
+        '<section class="card" style="gap:20px" aria-label="Crédito CR-0001"><div class="top"><div><span class="hint" style="font-size:13px">Crédito personal</span><h2 style="font-size:20px">CR-0001</h2></div>' + badge(ec) + '</div>' +
+        '<div class="metrics"><div class="metric"><span>Saldo pendiente total</span><b>' + $(total) + '</b></div><div class="metric"><span>Próxima cuota</span><b>' + (p ? 'N.º ' + p.n + ' · ' + p.vence : 'Sin cuotas') +
+        '</b></div><div class="metric"><span>Cuotas pendientes</span><b>' + pend.length + ' de ' + st.cuotas.length + '</b></div></div>' +
+        '<div class="tbl"><table><caption>Cronograma de pagos</caption><thead><tr><th>N.º</th><th>Vence</th><th class="r">Cuota</th><th class="r">Mora</th><th class="r">Saldo</th><th>Estado</th></tr></thead><tbody>' + filas + '</tbody></table></div>' +
+        '<div class="btns">' + (p ? '<button class="btn" data-a="pagar">Pagar cuota</button>' : '') + '<button class="btn sec" data-a="historial">Ver historial</button></div></section></div>';
+    },
+    pagar: function () {
+      var p = prox();
+      return '<div class="stack narrow"><button class="back" data-a="creditos">← Mis créditos</button><div><h1>Pagar cuota ' + p.n + '</h1><p class="sub">Crédito CR-0001 · vence ' + p.vence + '</p></div>' +
+        '<section class="card" aria-label="Monto a pagar">' + row('Saldo de capital', $(p.capital)) + row('Mora vigente', $(p.mora), 'mora') +
+        '<div class="row total"><span>Total a pagar</span><span>' + $(p.capital + p.mora) + '</span></div></section>' +
+        '<div class="opts" role="group" aria-label="¿Cuánto deseas pagar?"><button class="opt" data-a="total" aria-pressed="' + (st.modo === 'total') + '"><b>Pagar total</b><span>' + $(p.capital + p.mora) + '</span></button>' +
+        '<button class="opt" data-a="otro" aria-pressed="' + (st.modo === 'otro') + '"><b>Otro monto</b><span>Pago parcial</span></button></div>' +
+        (st.modo === 'otro' ? '<div class="field"><label for="monto">Monto a pagar (S/)</label><input id="monto" inputmode="decimal" value="' + st.montoTexto + '"><span class="hint">Máximo permitido: ' + $(p.capital + p.mora) + '. El pago cubre primero la mora y luego el capital.</span></div>' : '') +
+        (st.error ? '<p class="err" role="alert">' + st.error + '</p>' : '') +
+        '<div class="field"><label for="cuenta">Cuenta de origen</label><select id="cuenta"><option' + (st.cuenta === 'Ahorros •••• 3456' ? ' selected' : '') + ' value="Ahorros •••• 3456">Cuenta de ahorros •••• 3456</option><option' +
+        (st.cuenta === 'Ahorros •••• 7810' ? ' selected' : '') + ' value="Ahorros •••• 7810">Cuenta de ahorros •••• 7810</option></select></div>' +
+        '<button class="btn" data-a="continuar">Continuar</button></div>';
+    },
+    confirmar: function () {
+      var p = prox(), m = monto(p), pt = repartir(m, p);
+      return '<div class="stack narrow"><div><h1>Confirma tu pago</h1><p class="sub">Revisa los datos antes de confirmar.</p></div><section class="card" aria-label="Resumen del pago">' +
+        row('Crédito / cuota', 'CR-0001 / ' + p.n) + row('Cuenta de origen', st.cuenta) + row('Se aplica a mora', $(pt.mora), 'mora') + row('Se aplica a capital', $(pt.capital)) +
+        '<div class="row total"><span>Total a debitar</span><span>' + $(m) + '</span></div></section><p class="hint" style="margin:0">Al confirmar, el banco solicitará el cargo a tu cuenta. Tu cuota se actualiza solo cuando el cargo se confirma.</p>' +
+        '<div class="btns"><button class="btn sec" data-a="pagar">Corregir</button><button class="btn" data-a="confirmar">Confirmar pago</button></div></div>';
+    },
+    confirmado: function () {
+      var u = st.ultimo;
+      return '<div class="stack narrow"><div class="head-icon"><div class="ic ok">' + IC.ok + '</div><div><h1>Pago confirmado</h1><p class="sub">Cuentas confirmó el cargo y tu cuota fue actualizada.</p></div></div>' +
+        '<section class="card" aria-label="Comprobante de pago"><h2 style="font-size:17px">Comprobante de pago</h2>' + row('Número de operación', '<b>' + u.ref + '</b>') + row('Fecha y hora', '[FECHA Y HORA]') + row('Canal', 'Home Banking') +
+        row('Crédito / cuota', 'CR-0001 / ' + u.cuota) + row('Aplicado a mora', $(u.mora), 'mora') + row('Aplicado a capital', $(u.capital)) +
+        '<div class="row" style="font-weight:700"><span style="color:var(--ink)">Total pagado</span><span>' + $(u.monto) + '</span></div>' +
+        '<div class="row" style="border-top:1px solid var(--line);padding-top:12px"><span>Saldo restante de la cuota</span><span>' + $(u.saldo) + '</span></div>' + row('Estado de la cuota', u.estadoCuota) + row('Estado del crédito', estadoCredito()) +
+        '</section><div class="btns"><button class="btn sec">Descargar comprobante</button><button class="btn" data-a="creditos">Volver a mis créditos</button></div></div>';
+    },
+    fondos: function () {
+      return '<div class="stack narrow">' + head('warn', 'warn', 'No se pudo realizar el pago') + '<section class="card"><h2 style="color:var(--mora)">Fondos insuficientes</h2><p class="txt">Tu cuenta no tiene saldo suficiente para este pago. No se realizó ningún cargo y tu cuota no cambió.</p><p class="hint" style="margin:0">Referencia: ' + st.ultimo.ref +
+        '</p></section><div class="btns"><button class="btn" data-a="otro-pagar">Pagar otro monto</button><button class="btn sec" data-a="creditos">Volver a mis créditos</button></div></div>';
+    },
+    verificacion: function () {
+      return '<div class="stack narrow">' + head('clock', 'info', 'Estamos confirmando tu pago') + '<section class="card"><p class="txt">No recibimos a tiempo la respuesta de tu cuenta. Tu pago quedó <strong>en verificación</strong> y tu cuota todavía no cambia.</p>' +
+        row('Referencia', '<b>' + st.ultimo.ref + '</b>') + row('Monto', $(st.ultimo.monto)) + '<div class="aviso"><strong>No repitas el pago.</strong> Verás el resultado en tu historial en cuanto se confirme.</div></section>' +
+        '<div class="btns"><button class="btn" data-a="historial">Ver historial</button><button class="btn sec" data-a="creditos">Volver a mis créditos</button></div></div>';
+    },
+    excedido: function () {
+      var p = prox();
+      return '<div class="stack narrow">' + head('warn', 'warn', 'Monto no permitido') + '<section class="card"><h2 style="color:var(--mora)">El monto supera lo adeudado</h2><p class="txt">Lo adeudado de la cuota ' + p.n + ' es ' + $(p.capital + p.mora) +
+        '. Ingresa un monto menor o igual.</p></section><div class="btns"><button class="btn" data-a="otro-pagar">Corregir monto</button></div></div>';
+    },
+    bloqueado: function () {
+      return '<div class="stack narrow">' + head('lock', 'warn', 'Pagos bloqueados temporalmente') + '<section class="card"><h2 style="color:var(--mora)">Bloqueo por seguridad</h2><p class="txt">Detectamos varios intentos de validación fallidos. Por tu seguridad, tus pagos están bloqueados por unos minutos. No se realizó ningún cargo.</p></section>' +
+        '<div class="btns"><button class="btn" data-a="salir">Salir</button></div></div>';
+    },
+    historial: function () {
+      var filas = st.pagos.map(function (p) { return '<tr><td style="font-weight:600">' + p.ref + '</td><td>Home Banking</td><td>' + p.cuota + '</td><td class="r">' + $(p.monto) + '</td><td>' + badge(p.estado) + '</td></tr>'; }).join('');
+      return '<div class="stack"><button class="back" data-a="creditos">← Mis créditos</button><div><h1>Historial de pagos</h1><p class="sub">Crédito CR-0001 · del más reciente al más antiguo</p></div>' +
+        '<section class="card" style="padding:8px 24px 16px"><div class="tbl"><table><thead><tr><th>Referencia</th><th>Canal</th><th>Cuota</th><th class="r">Monto</th><th>Estado</th></tr></thead><tbody>' + filas + '</tbody></table></div></section></div>';
+    }
+  };
+
+  function continuar() {
+    var p = prox(), m = monto(p);
+    if (!(m > 0)) { st.error = 'Ingresa un monto mayor a cero.'; render(); return; }
+    if (m > p.capital + p.mora + 0.0001) { go('excedido'); return; }
+    go('confirmar');
+  }
+  function confirmar() {
+    if (esc.seguridad === 'bloqueado') { go('bloqueado'); return; }
+    var p = prox(), m = monto(p), pt = repartir(m, p), ref = 'OP-' + String(st.pagos.length + 1).padStart(4, '0');
+    if (esc.cuentas === 'fondos') { st.pagos.unshift({ ref: ref, cuota: p.n, monto: m, estado: 'Rechazado' }); st.ultimo = Object.assign({}, st.ultimo, { ref: ref, cuota: p.n, monto: m }); go('fondos'); return; }
+    if (esc.cuentas === 'sin_respuesta') { st.pagos.unshift({ ref: ref, cuota: p.n, monto: m, estado: 'En verificación' }); st.ultimo = Object.assign({}, st.ultimo, { ref: ref, cuota: p.n, monto: m }); go('verificacion'); return; }
+    p.capital = r2(p.capital - pt.capital); p.mora = r2(p.mora - pt.mora); p.parcial = p.capital + p.mora > 0;
+    st.pagos.unshift({ ref: ref, cuota: p.n, monto: m, estado: 'Confirmado' });
+    st.ultimo = { ref: ref, cuota: p.n, monto: m, mora: pt.mora, capital: pt.capital, saldo: p.capital + p.mora, estadoCuota: estadoCuota(p) };
+    go('confirmado');
+  }
+
+  function render() {
+    var sesion = !(st.screen === 'login' || st.screen === 'bloqueado');
+    var sel = function (v, cur) { return '<option value="' + v[0] + '"' + (v[0] === cur ? ' selected' : '') + '>' + v[1] + '</option>'; };
+    document.getElementById('app').className = 'app' + (ocultarDemo ? ' oculto' : '');
+    document.getElementById('app').innerHTML =
+      '<div class="demo" role="region" aria-label="Panel de demostración"><div class="wrap"><strong>Simulación (solo demostración):</strong>' +
+      '<label>Respuesta de Cuentas <select id="d-cuentas">' + [['confirmado', 'Confirma el cargo'], ['fondos', 'Fondos insuficientes'], ['sin_respuesta', 'Sin respuesta (INC-01)']].map(function (v) { return sel(v, esc.cuentas); }).join('') + '</select></label>' +
+      '<label>Seguridad <select id="d-seg">' + [['normal', 'Normal'], ['bloqueado', 'Bloqueado']].map(function (v) { return sel(v, esc.seguridad); }).join('') + '</select></label>' +
+      '<button class="btn sec" style="height:32px;padding:0 12px;font-size:13px" data-a="reiniciar">Reiniciar</button></div></div>' +
+      '<header><div class="wrap top"><div class="brand"><div class="logo">BNA</div><div><b>Home Banking</b><small>Banco Nacional de Arequipa</small></div></div>' +
+      (sesion ? '<nav aria-label="Menú principal"><button data-a="creditos">Mis créditos</button><button data-a="historial">Historial de pagos</button><button class="salir" data-a="salir">Salir</button></nav>' : '') +
+      '</div></header><main>' + V[st.screen]() + '</main>' +
+      '<footer><div class="wrap foot"><span>Banco Nacional de Arequipa · Módulo Cobranza (SRV-CR-05)</span><span>Prototipo navegable con datos ficticios; no conectado a la API</span></div></footer>';
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-a]'); if (!b) return;
+    var a = b.getAttribute('data-a');
+    if (a === 'ingresar' || a === 'creditos') go('creditos');
+    else if (a === 'historial') go('historial');
+    else if (a === 'pagar') go('pagar');
+    else if (a === 'otro-pagar') go('pagar', { modo: 'otro' });
+    else if (a === 'salir') { st = S0('login'); render(); }
+    else if (a === 'reiniciar') { st = S0('login'); render(); }
+    else if (a === 'total') { st.modo = 'total'; st.error = ''; render(); }
+    else if (a === 'otro') { st.modo = 'otro'; st.error = ''; render(); }
+    else if (a === 'continuar') continuar();
+    else if (a === 'confirmar') confirmar();
+  });
+  document.addEventListener('input', function (e) { if (e.target.id === 'monto') { st.montoTexto = e.target.value; } });
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'cuenta') st.cuenta = e.target.value;
+    if (e.target.id === 'd-cuentas') esc.cuentas = e.target.value;
+    if (e.target.id === 'd-seg') esc.seguridad = e.target.value;
+  });
+  render();
+})();
+</script>
+</body>
+</html>

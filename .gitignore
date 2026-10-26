@@ -1,0 +1,4 @@
+.env
+__pycache__/
+*.pyc
+cobranza_demo.db

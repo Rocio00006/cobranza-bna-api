@@ -92,6 +92,7 @@ class MoraIn(BaseModel):
 T06 = "CR-INT-06 Desembolso a Cobranza"
 T08 = "CR-INT-08 Home Banking a Cobranza"
 TCO = "Consultas"
+TCL = "Clientes (RF-COB-002 / RF-COB-012)"
 TMO = "Mora (valor recibido)"
 TAU = "Auditoria (CR-INT-10)"
 
@@ -122,9 +123,35 @@ def cuotas(codCredito: str, db=Depends(get_db)):
     return S.obtener_credito(db, codCredito)["cuotas"]
 
 
+@app.get("/creditos/{codCredito}/monto-a-pagar", tags=[TCO],
+          summary="Monto a pagar de la proxima cuota, desglosado en capital y mora (RF-COB-003)")
+def monto_a_pagar(codCredito: str, db=Depends(get_db)):
+    return S.monto_a_pagar(db, codCredito)
+
+
+@app.post("/creditos/{codCredito}/recalcular-estado", tags=[TCO],
+          summary="Recalcula AL_DIA/EN_MORA del credito (RF-COB-007)")
+def recalcular_estado(
+        codCredito: str,
+        fechaReferencia: Optional[date] = Query(
+            None, description="Opcional, por defecto hoy. Permite demostrar la transicion a EN_MORA."),
+        db=Depends(get_db)):
+    return S.recalcular_estado(db, codCredito, fechaReferencia)
+
+
 @app.get("/creditos/{codCredito}/pagos", tags=[TCO], summary="Historial de pagos")
 def pagos(codCredito: str, db=Depends(get_db)):
     return S.historial_pagos(db, codCredito)
+
+
+@app.get("/clientes/{idCliente}/creditos", tags=[TCL], summary="Creditos (con su cronograma) de un cliente")
+def creditos_por_cliente(idCliente: str, db=Depends(get_db)):
+    return S.creditos_por_cliente(db, idCliente)
+
+
+@app.get("/clientes/{idCliente}/pagos", tags=[TCL], summary="Historial de pagos de un cliente")
+def pagos_por_cliente(idCliente: str, db=Depends(get_db)):
+    return S.pagos_por_cliente(db, idCliente)
 
 
 @app.get("/pagos/{referenciaTransaccion}/comprobante", tags=[TCO], summary="Comprobante de un pago confirmado")

@@ -103,6 +103,7 @@ DDL = [
         fechaVencimiento DATE NOT NULL,
         montoCuota DECIMAL(14,2) NOT NULL CHECK (montoCuota > 0),
         saldoPendiente DECIMAL(14,2) NOT NULL CHECK (saldoPendiente >= 0),
+        moraPendiente DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (moraPendiente >= 0),
         estadoCuota VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
         UNIQUE (codCredito, numeroCuota),
         FOREIGN KEY (codCredito) REFERENCES CREDITO(codCredito)
@@ -118,6 +119,8 @@ DDL = [
         idCanal VARCHAR(10) NOT NULL,
         fechaHora DATETIME NOT NULL,
         montoPago DECIMAL(14,2) NOT NULL CHECK (montoPago > 0),
+        montoMora DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (montoMora >= 0),
+        montoCapital DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (montoCapital >= 0),
         referenciaTransaccion VARCHAR(40) NOT NULL UNIQUE,
         estadoConfirmacion VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
         FOREIGN KEY (codCredito) REFERENCES CREDITO(codCredito),

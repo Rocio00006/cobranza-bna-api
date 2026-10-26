@@ -50,17 +50,20 @@ idEntidad VARCHAR(20); usuarioOperador VARCHAR(30); tipoIntegracion VARCHAR(30).
 o documentar la diferencia.
 
 ## Requerimientos funcionales (Fase I) y estado en el código
-Hecho: RF-COB-001, 002 (por codCredito), 005, 010, 012 (por codCredito), 015, 016, 017 (rechazo).
+Hecho: RF-COB-001, 002 (por codCredito e idCliente; DNI pendiente, ver abajo), 003 (monto a pagar desglosado),
+005, 007 (catálogo provisional AL_DIA/EN_MORA/CANCELADO), 008 / 013 (comprobante con mora y capital
+desglosados), 010, 012 (por codCredito e idCliente), 015, 016, 017 (rechazo).
 Parcial / falta:
-- RF-COB-002 / 012: consulta por DNI/idCliente.
-- RF-COB-003: endpoint de monto a pagar desglosado (saldo de cuota + mora vigente).
+- RF-COB-002 / 012: consulta por DNI (hoy solo por idCliente; requiere interfaz con Clientes, aún no existe).
 - RF-COB-004: validación de identidad (PROPUESTA; simular token de Seguridad, no implementar antifraude real).
-- RF-COB-007: estados del crédito AL_DIA / EN_MORA / CANCELADO (catálogo provisional, pendiente del Comité).
-- RF-COB-008 / 013: comprobante con línea de mora desglosada.
 - RF-COB-011: consultar y resolver pagos PENDIENTES (consultar a Cuentas por idOperacion antes de reintentar; INC-01 de I-04).
 - RF-COB-018 (I-04/I-05): conciliación diaria (total cobrado vs aplicado, pagos pendientes y su antigüedad).
 - Roles (I-04): COBRANZA_LEER (consultas, auditoría) y COBRANZA_EJECUTAR (pagos, mora). Simple: API key por rol.
 Fuera de alcance: RF-COB-006 (recordatorios) y RF-COB-014 (notificaciones).
+
+Supuestos provisionales introducidos en Parte 2A, pendientes de definición del Comité (ver README):
+catálogo de estados del crédito (AL_DIA/EN_MORA/CANCELADO) y orden de imputación del pago
+(hoy: primero mora vigente, luego capital; constante `ORDEN_IMPUTACION_MORA_PRIMERO` en `app/servicio.py`).
 
 ## Prácticas ITIL ya definidas (I-04 / I-05) que el código debe poder evidenciar
 - INC-01 pago no confirmado, INC-02 pago duplicado, INC-03 obligación no activada.

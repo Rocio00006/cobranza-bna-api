@@ -12,7 +12,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # carpeta co
 sys.path.insert(0, RAIZ)
 from app.db import cargar_env  # noqa: E402
 
-BUS_URL = os.environ.get("BUS_URL", "http://127.0.0.1:8080")
+BUS_URL = os.environ.get("BUS_URL", "http://127.0.0.1:8090")
 
 
 def activar_obligacion(api_key, codCredito, idCliente, idSolicitud, montoAprobado, calendarioPagos,

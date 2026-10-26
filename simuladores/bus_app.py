@@ -4,7 +4,7 @@ X-Token-Seguridad, etc.) y cuerpo tal cual, y registrando cada llamada (hora, or
 codigo de respuesta). Asi se cumple RNF-04: toda la comunicacion entre modulos pasa por el Bus, nunca
 de forma directa.
 
-Ejecutar: uvicorn simuladores.bus_app:app --port 8080   (desde la carpeta cobranza/)
+Ejecutar: uvicorn simuladores.bus_app:app --port 8090   (desde la carpeta cobranza/)
 """
 from datetime import datetime
 
@@ -16,9 +16,10 @@ from fastapi.responses import Response
 
 app = FastAPI(title="Bus de Servicios (simulado)", version="0.1.0")
 
-# Puertos por defecto; override con las variables de entorno si alguno esta ocupado.
+# Puertos por defecto (los verificados en la prueba de integracion, ver README); override con las
+# variables de entorno si alguno esta ocupado.
 DESTINOS = {
-    "cobranza": os.environ.get("BUS_DESTINO_COBRANZA", "http://127.0.0.1:8000"),
+    "cobranza": os.environ.get("BUS_DESTINO_COBRANZA", "http://127.0.0.1:8002"),
     "cuentas": os.environ.get("BUS_DESTINO_CUENTAS", "http://127.0.0.1:8001"),
 }
 

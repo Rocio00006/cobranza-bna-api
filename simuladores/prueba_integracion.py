@@ -3,9 +3,9 @@ NO llamadas directas a app/servicio.py. Cubre: Desembolso activa -> Home Banking
 duplicado -> fondos insuficientes -> Cuentas sin respuesta (INC-01) -> resolver pendiente -> conciliacion.
 
 Requiere que ya esten corriendo (ver levantar_todo.bat o el README):
-  - Cobranza API       puerto 8000  (CUENTAS_URL apuntando al Bus)
+  - Cobranza API       puerto 8002  (CUENTAS_URL apuntando al Bus)
   - Cuentas (simulado) puerto 8001
-  - Bus de Servicios   puerto 8080
+  - Bus de Servicios   puerto 8090
 
 Guarda la evidencia de cada paso (peticion, respuesta y codigo) en
 evidencias/integracion_<fecha>.json y un resumen legible en evidencias/integracion_<fecha>.md.
@@ -24,7 +24,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # carpeta co
 sys.path.insert(0, RAIZ)
 from app.db import cargar_env  # noqa: E402
 
-BUS_URL = os.environ.get("BUS_URL", "http://127.0.0.1:8080")
+BUS_URL = os.environ.get("BUS_URL", "http://127.0.0.1:8090")
 
 SUFIJO = datetime.now().strftime("%H%M%S")
 COD_CREDITO = f"CR-INTEG-{SUFIJO}"

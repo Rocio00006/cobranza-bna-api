@@ -75,9 +75,15 @@ propio**, en su propio puerto, hablando por red real (no llamadas directas a `ap
 
 | Servicio | Carpeta/archivo | Puerto |
 |---|---|---|
-| Cobranza API | `app/main.py` | 8000 |
+| Cobranza API | `app/main.py` | 8002 |
 | Cuentas (simulado, CR-INT-07) | `simuladores/cuentas_app.py` | 8001 |
-| Bus de Servicios | `simuladores/bus_app.py` | 8080 (enruta `/cobranza/*` y `/cuentas/*`) |
+| Bus de Servicios | `simuladores/bus_app.py` | 8090 (enruta `/cobranza/*` y `/cuentas/*`) |
+
+> Para correr solo Cobranza (sin Cuentas ni Bus) usa el puerto 8000 de la sección "Ejecución" arriba.
+> Para la integración completa, Cobranza se levanta en el 8002 (`levantar_todo.bat` ya lo hace así):
+> en nuestro entorno de desarrollo el 8000 quedó ocupado por un socket que Windows no liberaba tras
+> varios reinicios seguidos del servidor; si el tuyo está libre, puedes usar 8000 también — solo
+> ajusta `BUS_DESTINO_COBRANZA` al levantar el Bus.
 | Desembolso (script cliente, CR-INT-06) | `simuladores/desembolso_cliente.py` | — (no es servidor) |
 | Home Banking (script cliente, CR-INT-08) | `simuladores/home_banking_cliente.py` | — (no es servidor) |
 
@@ -85,13 +91,13 @@ propio**, en su propio puerto, hablando por red real (no llamadas directas a `ap
 ```
 levantar_todo.bat
 ```
-Abre 3 ventanas (Cobranza, Cuentas, Bus) y define `CUENTAS_URL=http://127.0.0.1:8080/cuentas/cargos`
+Abre 3 ventanas (Cobranza, Cuentas, Bus) y define `CUENTAS_URL=http://127.0.0.1:8090/cuentas/cargos`
 para que Cobranza llame a Cuentas **a través del Bus** (sin tocar la lógica de `app/cuentas.py`, solo
 la variable de entorno). Si prefieres hacerlo a mano, abre 3 terminales:
 ```
-uvicorn app.main:app --port 8000          (en una terminal con CUENTAS_URL seteada, ver arriba)
+uvicorn app.main:app --port 8002          (en una terminal con CUENTAS_URL seteada, ver arriba)
 uvicorn simuladores.cuentas_app:app --port 8001
-uvicorn simuladores.bus_app:app --port 8080
+uvicorn simuladores.bus_app:app --port 8090
 ```
 
 **Prueba de integración completa** (Desembolso activa → Home Banking paga parcial → duplicado → fondos

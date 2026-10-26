@@ -14,8 +14,8 @@ reciente está en `evidencias/integracion_<fecha>.json` / `.md`.
 | CORE | RN-COB-005 (mora) | Módulo real sin API publicada | No se prueba por red (no hay CR-INT definida para que CORE empuje la mora); se registra manualmente vía `POST /creditos/{cod}/cuotas/{n}/mora`, simulando el valor que CORE enviaría | 2026-10-25 |
 
 ## Notas
-- El Bus de Servicios (`simuladores/bus_app.py`, puerto 8080) es también un simulador: en producción
-  sería el Bus real del banco. Mientras tanto, enruta `/cobranza/*` → Cobranza (8000) y `/cuentas/*` →
+- El Bus de Servicios (`simuladores/bus_app.py`, puerto 8090) es también un simulador: en producción
+  sería el Bus real del banco. Mientras tanto, enruta `/cobranza/*` → Cobranza (8002) y `/cuentas/*` →
   Cuentas simulado (8001), reenvía los headers de autenticación y registra cada llamada
   (`GET /bus/registro`).
 - Cuando Desembolso, Cuentas, Home Banking o Seguridad publiquen su API real, el contrato a validar es

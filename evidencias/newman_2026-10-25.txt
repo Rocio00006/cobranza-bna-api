@@ -1,0 +1,182 @@
+(node:14684) [DEP0176] DeprecationWarning: fs.F_OK is deprecated, use fs.constants.F_OK instead
+(Use `node --trace-deprecation ...` to show where the warning was created)
+newman
+
+Cobranza BNA
+
+□ CR-INT-06 (Desembolso -> Cobranza)
+└ 1. Activar obligacion (RN-COB-001, RF-COB-001)
+  POST http://127.0.0.1:8003/cr-int-06/obligaciones [201 Created, 532B, 406ms]
+  √  201 Created
+  √  estadoCredito AL_DIA
+  √  tiene 1 cuota PENDIENTE
+
+└ 2. Duplicado: credito ya activado (RN-COB-001)
+  POST http://127.0.0.1:8003/cr-int-06/obligaciones [409 Conflict, 204B, 318ms]
+  √  409 Conflict
+  √  regla RN-COB-001
+
+└ 3. Sin X-API-Key (401, I-04)
+  POST http://127.0.0.1:8003/cr-int-06/obligaciones [401 Unauthorized, 197B, 229ms]
+  √  401 sin clave
+  √  regla AUTENTICACION
+
+└ 4. Rol insuficiente: COBRANZA_LEER (403, I-04)
+  POST http://127.0.0.1:8003/cr-int-06/obligaciones [403 Forbidden, 258B, 410ms]
+  √  403 rol insuficiente
+  √  regla AUTORIZACION
+
+□ CR-INT-08 (Home Banking -> Cobranza)
+└ 5. Pago parcial (RN-COB-003/004/006)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [200 OK, 620B, 494ms]
+  √  200 OK
+  √  CONFIRMADO
+  √  saldo baja a 850
+
+└ 6. Duplicado: idempotencia (RN-INT-CR-006)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [200 OK, 586B, 465ms]
+  √  200 OK
+  √  idempotente true
+
+└ 7. Excedente (RN-COB-011)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [422 Unprocessable Entity, 338B, 287ms]
+  √  422 Unprocessable
+  √  regla RN-COB-011
+
+└ 8. Fondos insuficientes (RN-COB-009)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [200 OK, 438B, 242ms]
+  √  200 OK
+  √  RECHAZADO
+
+└ 9. Sin X-Token-Seguridad (401, RF-COB-004)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [401 Unauthorized, 197B, 277ms]
+  √  401 sin token
+  √  regla RF-COB-004
+
+└ 10. Token invalido (401, RF-COB-004)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [401 Unauthorized, 197B, 209ms]
+  √  401 token invalido
+  √  regla RF-COB-004
+
+□ Consultas
+└ 11. Credito con cuotas y saldo (RF-COB-002)
+  GET http://127.0.0.1:8003/creditos/CR-PM-1792982262776 [200 OK, 522B, 261ms]
+  √  200 OK
+  √  tiene codCredito
+
+└ 12. Cronograma de cuotas
+  GET http://127.0.0.1:8003/creditos/CR-PM-1792982262776/cuotas [200 OK, 310B, 401ms]
+  √  200 OK
+  √  es un arreglo
+
+└ 13. Monto a pagar desglosado (RF-COB-003)
+  GET http://127.0.0.1:8003/creditos/CR-PM-1792982262776/monto-a-pagar [200 OK, 293B, 448ms]
+  √  200 OK
+  √  tiene totalAPagar
+
+└ 14. Historial de pagos del credito
+  GET http://127.0.0.1:8003/creditos/CR-PM-1792982262776/pagos [200 OK, 468B, 345ms]
+  √  200 OK
+  √  al menos 1 pago
+
+└ 15. Creditos por cliente (RF-COB-002/012)
+  GET http://127.0.0.1:8003/clientes/CLI-PM-1792982262776/creditos [200 OK, 524B, 234ms]
+  √  200 OK
+  √  incluye el credito de prueba
+
+└ 16. Pagos por cliente (RF-COB-002/012)
+  GET http://127.0.0.1:8003/clientes/CLI-PM-1792982262776/pagos [200 OK, 538B, 232ms]
+  √  200 OK
+
+└ 17. Comprobante de pago (RF-COB-008/013)
+  GET http://127.0.0.1:8003/pagos/OP-PM-1792982264611/comprobante [200 OK, 453B, 354ms]
+  √  200 OK
+  √  tiene montoAplicadoCapital
+
+□ Mora
+└ 18. Mora rechazada: cuota aun no vencio (RN-COB-010)
+  POST http://127.0.0.1:8003/creditos/CR-PM-1792982262776/cuotas/1/mora [422 Unprocessable Entity, 220B, 245ms]
+  √  422 cuota no vencida
+  √  regla RN-COB-010
+
+└ 19. Mora aceptada con fechaReferencia (RN-COB-010)
+  POST http://127.0.0.1:8003/creditos/CR-PM-1792982262776/cuotas/1/mora?fechaReferencia=2026-11-10 [200 OK, 306B, 256ms]
+  √  200 OK
+  √  moraPendienteCuota 20
+
+└ 20. Historial de mora de la cuota
+  GET http://127.0.0.1:8003/creditos/CR-PM-1792982262776/cuotas/1/mora [200 OK, 242B, 278ms]
+  √  200 OK
+  √  1 registro vigente
+
+□ Pendientes y conciliacion
+└ 21. Pago sin respuesta de Cuentas (INC-01)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [200 OK, 431B, 311ms]
+  √  200 OK
+  √  PENDIENTE
+
+└ 22. Pagos pendientes con antiguedad (RF-COB-011/INC-01)
+  GET http://127.0.0.1:8003/pagos/pendientes [200 OK, 313B, 326ms]
+  √  200 OK
+  √  incluye el pago pendiente
+
+└ 23. Resolver pago pendiente (RF-COB-011, RN-COB-009)
+  POST http://127.0.0.1:8003/pagos/OP-PM-PEND-1792982270898/resolver [200 OK, 638B, 372ms]
+  √  200 OK
+  √  CONFIRMADO
+
+└ 24. Conciliacion del dia (RF-COB-018)
+  GET http://127.0.0.1:8003/conciliacion [200 OK, 792B, 268ms]
+  √  200 OK
+  √  tiene totalCobrado y totalAplicado
+
+□ Seguridad y roles
+└ 25. Clave invalida (401, I-04)
+  GET http://127.0.0.1:8003/auditoria [401 Unauthorized, 191B, 271ms]
+  √  401 clave invalida
+  √  regla AUTENTICACION
+
+└ 26. Rechazo de token 1/3 (RF-COB-004)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [401 Unauthorized, 197B, 223ms]
+  √  401 token invalido
+
+└ 27. Rechazo de token 2/3 (RF-COB-004)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [401 Unauthorized, 197B, 260ms]
+  √  401 token invalido
+
+└ 28. Rechazo de token 3/3: dispara el bloqueo (RF-COB-004)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [401 Unauthorized, 241B, 434ms]
+  √  401 y queda bloqueado
+  √  mensaje menciona bloqueado
+
+└ 29. Token valido pero sigue bloqueado (RF-COB-004)
+  POST http://127.0.0.1:8003/cr-int-08/pagos [401 Unauthorized, 230B, 370ms]
+  √  401 sigue bloqueado
+  √  mensaje menciona bloqueado
+
+□ Metricas
+└ 30. Metricas I-05: fallas, pendientes y p95
+  GET http://127.0.0.1:8003/metricas [200 OK, 278B, 329ms]
+  √  200 OK
+  √  tiene tasaFallasOperacion
+  √  tiene pagosPendientes
+
+┌─────────────────────────┬────────────────────┬────────────────────┐
+│                         │           executed │             failed │
+├─────────────────────────┼────────────────────┼────────────────────┤
+│              iterations │                  1 │                  0 │
+├─────────────────────────┼────────────────────┼────────────────────┤
+│                requests │                 30 │                  0 │
+├─────────────────────────┼────────────────────┼────────────────────┤
+│            test-scripts │                 30 │                  0 │
+├─────────────────────────┼────────────────────┼────────────────────┤
+│      prerequest-scripts │                 11 │                  0 │
+├─────────────────────────┼────────────────────┼────────────────────┤
+│              assertions │                 60 │                  0 │
+├─────────────────────────┴────────────────────┴────────────────────┤
+│ total run duration: 11.9s                                         │
+├───────────────────────────────────────────────────────────────────┤
+│ total data received: 7.05kB (approx)                              │
+├───────────────────────────────────────────────────────────────────┤
+│ average response time: 318ms [min: 209ms, max: 494ms, s.d.: 79ms] │
+└───────────────────────────────────────────────────────────────────┘

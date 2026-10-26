@@ -14,6 +14,10 @@ Implementa el flujo de pago de cuotas respetando las reglas RN-COB y las interfa
 | Consultas | `GET /creditos/{cod}`, `/cuotas`, `/pagos`, `/pagos/{ref}/comprobante` | Saldo, cronograma, historial y comprobante (con desglose mora/capital) |
 | RF-COB-002 / 012 | `GET /clientes/{idCliente}/creditos`, `/pagos` | Créditos (con cronograma) e historial de pagos, consultados por `idCliente` |
 | Mora | `POST/GET /creditos/{cod}/cuotas/{n}/mora` | Registra la mora **recibida** y conserva el historial |
+| RF-COB-011 / INC-01 | `GET /pagos/pendientes` | Pagos en `PENDIENTE` con su antigüedad en horas |
+| RF-COB-011 / INC-01 | `POST /pagos/{ref}/resolver` | Consulta a Cuentas el estado de un pago `PENDIENTE` (nunca repite el cargo) y lo resuelve |
+| RF-COB-018 | `GET /conciliacion?fecha=AAAA-MM-DD` | Total cobrado vs aplicado del día, diferencia y detalle de pendientes/rechazados/`REQUIERE_REVISION` |
+| I-05 | `GET /metricas` | Tasa de fallas de operación, pagos pendientes y p95 de `POST /cr-int-08/pagos` (sin metas) |
 | CR-INT-10 | `GET /auditoria` | Eventos de trazabilidad (registro local) |
 
 ## Reglas implementadas
@@ -31,6 +35,8 @@ Implementa el flujo de pago de cuotas respetando las reglas RN-COB y las interfa
 | RN-INT-CR-006 | Idempotencia: la misma `referenciaTransaccion` no genera un segundo pago |
 | RF-COB-007 | Catálogo provisional de estados del crédito: `AL_DIA`, `EN_MORA`, `CANCELADO` (ver Supuestos) |
 | RF-COB-008 / 013 | El comprobante muestra `montoAplicadoMora` y `montoAplicadoCapital` del pago |
+| RF-COB-011 / INC-01 | Un pago `PENDIENTE` se resuelve consultando a Cuentas por su `idOperacion`, nunca repitiendo el cargo; si Cuentas confirma pero la cuota ya cambió, queda `REQUIERE_REVISION` |
+| RF-COB-018 / INC-02 | La conciliación compara lo cobrado (`CONFIRMADO` + `REQUIERE_REVISION`) contra lo aplicado (`APLICACION_PAGO`); la diferencia delata pagos `REQUIERE_REVISION` |
 
 ## Instalación
 Requisitos: Python 3.10 o superior y MySQL 8.
@@ -66,7 +72,12 @@ Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado
 11. **Comprobante:** `GET /pagos/OP-0001/comprobante`.
 12. **Estado del crédito (RF-COB-007):** `POST /creditos/CR-0001/recalcular-estado?fechaReferencia=2026-12-10` fuerza `EN_MORA` (demuestra la transición sin esperar la fecha real); sin el parámetro, vuelve a evaluar con la fecha de hoy.
 13. **Consulta por cliente (RF-COB-002/012):** `GET /clientes/CLI-0001/creditos` y `GET /clientes/CLI-0001/pagos`.
-14. **Auditoría:** `GET /auditoria` y en MySQL: ``SELECT tipoEvento, idEntidad, `timestamp` FROM EVENTO_AUDITORIA ORDER BY `timestamp`;``
+14. **Pago pendiente (RF-COB-011/INC-01):** `montoPago 100.00`, `cuentaOrigen "SIN-RESPUESTA"`, `OP-0006`. Queda `PENDIENTE`. `GET /pagos/pendientes` lo lista con su antigüedad en horas.
+15. **Resolver el pendiente:** `POST /pagos/OP-0006/resolver` consulta a Cuentas (nunca repite el cargo) y lo deja `CONFIRMADO`, aplicado a la cuota 3.
+16. **REQUIERE_REVISION:** repite el caso 14 con `OP-0007` sobre una cuota que luego se termina de pagar por otra vía mientras `OP-0007` sigue pendiente; al resolver `OP-0007`, Cuentas confirma pero el monto ya no cabe en lo adeudado → `REQUIERE_REVISION`.
+17. **Conciliación (RF-COB-018):** `GET /conciliacion` (fecha de hoy) muestra `totalCobrado`, `totalAplicado`, la `diferencia` (el `REQUIERE_REVISION` del paso 16) y el detalle de pendientes/rechazados/`REQUIERE_REVISION`.
+18. **Métricas (I-05):** `GET /metricas` muestra la tasa de fallas, los pagos pendientes y el p95 de `POST /cr-int-08/pagos` medido durante la grabación (sin metas numéricas).
+19. **Auditoría:** `GET /auditoria` y en MySQL: ``SELECT tipoEvento, idEntidad, `timestamp` FROM EVENTO_AUDITORIA ORDER BY `timestamp`;``
 
 ## Supuestos
 - **Mora:** la fórmula y quién la calcula están pendientes del Comité (RN-COB-005). Cobranza no calcula ni asume tasa: guarda la mora que recibe en `CUOTA.moraPendiente`, **separada del capital** (`CUOTA.saldoPendiente`). Un recálculo reemplaza el valor vigente (no se suma) y el historial completo queda en la tabla `MORA` (campo `vigente`). **RN-COB-010:** se rechaza (422) si la cuota aún no venció respecto de la fecha de referencia (por defecto hoy; `fechaReferencia` opcional en el endpoint, igual que en `recalcular-estado`, para poder demostrarlo) o si `diasAtraso` es 0 con `montoCalculado` mayor a cero.
@@ -76,18 +87,23 @@ Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado
 - **Calendario:** se recibe completo en CR-INT-06. Quién lo mantiene después está pendiente del Comité.
 - **Aplicación del pago:** un pago se aplica a la cuota pendiente más antigua (capital y/o mora) y no puede superar su saldo adeudado total.
 - **Consulta por DNI (RF-COB-002/012):** Cobranza guarda `idCliente`, no el DNI. La consulta por DNI requeriría una interfaz con el módulo Clientes que aún no existe (pendiente, fuera de alcance de esta fase).
+- **Resolución de pagos pendientes (RF-COB-011/INC-01):** `POST /pagos/{ref}/resolver` solo **consulta** a Cuentas (`consultar(referencia)`), nunca vuelve a llamar `cargar` (RN-COB-009: un cargo incierto no se reintenta). Si Cuentas confirma pero, mientras el pago estuvo pendiente, la cuota cambió y el monto ya no cabe en lo adeudado, el dinero ya fue cobrado pero no se puede aplicar sin más: el pago queda `REQUIERE_REVISION` con su evento de auditoría. **La política de reversión/reasignación de ese dinero está pendiente del Comité** (hoy el pago simplemente se marca, no se decide su destino). El simulador de Cuentas (`CuentasSimulado.consultar`) responde `CONFIRMADO` por defecto (para poder demostrar que un pago "SIN-RESPUESTA" se resuelve); una `referenciaTransaccion` terminada en `-RECHAZA` o `-SIGUESIN` fuerza los otros dos desenlaces.
+- **Conciliación (RF-COB-018):** compara `totalCobrado` (pagos `CONFIRMADO` + `REQUIERE_REVISION` del día, dinero que Cuentas sí cargó) contra `totalAplicado` (suma de `APLICACION_PAGO` de pagos `CONFIRMADO`). Si ambos no coinciden es porque hay pagos `REQUIERE_REVISION` (cobrados, no aplicados a ninguna cuota). `pagosPendientes` no se filtra por día: es un backlog abierto (lo importante es su antigüedad, no cuándo se creó).
+- **Tasa de fallas (I-05):** `pagosFallidos / intentosValidos`, donde `intentosValidos` es la cantidad de filas en `PAGO` (los rechazos por datos inválidos no llegan a crear una fila, y un duplicado idempotente tampoco crea una fila nueva) y `pagosFallidos` cuenta `RECHAZADO` + `PENDIENTE` + `REQUIERE_REVISION`. Es una definición propuesta por el equipo de desarrollo, no una fórmula del Comité; **sin metas numéricas**, solo se reporta el valor medido.
 
 ## Qué falta
 - Probar la integración con los módulos reales: Desembolso, Cuentas y Home Banking.
 - Envío de eventos a Seguridad/Auditoría (hoy solo se registran localmente).
 - Autenticación y permisos por rol (LIDER_COBRANZA).
-- Conciliación diaria (RF-COB-018), recordatorios y notificaciones.
+- Recordatorios y notificaciones (fuera de alcance, RF-COB-006/014).
 - Consulta por DNI (hoy solo por `idCliente`; ver Supuestos).
+- Política de reversión/reasignación del dinero de un pago `REQUIERE_REVISION` (RF-COB-011; hoy solo se marca, no se decide su destino).
 - Reglas pendientes del Comité: fórmula y responsable de la mora, propietario del calendario, tratamiento de excedentes, orden de imputación del pago, catálogo definitivo de estados.
+- Metas numéricas de los indicadores de I-05 (hoy solo se mide, sin umbrales).
 - Pruebas de integración en el ambiente de Testing y despliegue.
 
 ## Pruebas automáticas
-La lógica de negocio tiene 32 pruebas (con SQLite, sin necesidad de MySQL):
+La lógica de negocio tiene 43 pruebas (con SQLite, sin necesidad de MySQL):
 ```
 python -m unittest discover -s tests -v
 ```

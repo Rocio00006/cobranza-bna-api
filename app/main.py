@@ -1,4 +1,5 @@
 """API del modulo Cobranza (Linea de Creditos, BNA). Swagger automatico en /docs."""
+import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from decimal import Decimal
@@ -48,6 +49,32 @@ async def manejar_error_negocio(request, exc):
     return JSONResponse(status_code=exc.status, content={"detalle": exc.detalle, "regla": exc.regla})
 
 
+# Indicador I-05: tiempo de respuesta p95 de POST /cr-int-08/pagos, medido en memoria (sin metas numericas).
+_TIEMPOS_PAGO_MS = []
+_MAX_MUESTRAS_TIEMPO = 500
+
+
+@app.middleware("http")
+async def medir_tiempo_pagos(request, call_next):
+    inicio = time.perf_counter()
+    response = await call_next(request)
+    if request.url.path == "/cr-int-08/pagos" and request.method == "POST":
+        _TIEMPOS_PAGO_MS.append((time.perf_counter() - inicio) * 1000)
+        del _TIEMPOS_PAGO_MS[:-_MAX_MUESTRAS_TIEMPO]
+    return response
+
+
+def _percentil(valores, p):
+    if not valores:
+        return None
+    ordenados = sorted(valores)
+    k = (len(ordenados) - 1) * (p / 100)
+    f, c = int(k), min(int(k) + 1, len(ordenados) - 1)
+    if f == c:
+        return round(ordenados[f], 2)
+    return round(ordenados[f] + (ordenados[c] - ordenados[f]) * (k - f), 2)
+
+
 class CuotaIn(BaseModel):
     numeroCuota: int
     fechaVencimiento: date
@@ -95,6 +122,9 @@ TCO = "Consultas"
 TCL = "Clientes (RF-COB-002 / RF-COB-012)"
 TMO = "Mora (valor recibido)"
 TAU = "Auditoria (CR-INT-10)"
+TPP = "Pagos pendientes (RF-COB-011 / INC-01)"
+TCI = "Conciliacion (RF-COB-018)"
+TME = "Metricas (I-05)"
 
 
 @app.get("/salud", tags=["Estado"])
@@ -157,6 +187,30 @@ def pagos_por_cliente(idCliente: str, db=Depends(get_db)):
 @app.get("/pagos/{referenciaTransaccion}/comprobante", tags=[TCO], summary="Comprobante de un pago confirmado")
 def comprobante(referenciaTransaccion: str, db=Depends(get_db)):
     return S.comprobante(db, referenciaTransaccion)
+
+
+@app.get("/pagos/pendientes", tags=[TPP], summary="Pagos PENDIENTE con su antiguedad (RF-COB-011 / INC-01)")
+def pagos_pendientes(db=Depends(get_db)):
+    return S.pagos_pendientes(db)
+
+
+@app.post("/pagos/{referenciaTransaccion}/resolver", tags=[TPP],
+          summary="Resuelve un pago PENDIENTE consultando a Cuentas, sin repetir el cargo (RN-COB-009)")
+def resolver_pago(referenciaTransaccion: str, db=Depends(get_db)):
+    return S.resolver_pago(db, referenciaTransaccion, cuentas)
+
+
+@app.get("/conciliacion", tags=[TCI], summary="Conciliacion diaria: total cobrado vs aplicado (RF-COB-018)")
+def conciliacion(
+        fecha: Optional[date] = Query(None, description="AAAA-MM-DD, por defecto hoy"),
+        db=Depends(get_db)):
+    return S.conciliacion(db, fecha)
+
+
+@app.get("/metricas", tags=[TME],
+         summary="Tasa de fallas, pagos pendientes y p95 de POST /cr-int-08/pagos (I-05, sin metas)")
+def metricas(db=Depends(get_db)):
+    return S.metricas(db, p95_pago_ms=_percentil(_TIEMPOS_PAGO_MS, 95), muestras_pago=len(_TIEMPOS_PAGO_MS))
 
 
 @app.post("/creditos/{codCredito}/cuotas/{numeroCuota}/mora", tags=[TMO],

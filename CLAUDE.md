@@ -70,23 +70,32 @@ Parte 1. En SQLite no hace falta: las pruebas siempre parten de un esquema nuevo
 ## Requerimientos funcionales (Fase I) y estado en el código
 Hecho: RF-COB-001, 002 (por codCredito e idCliente; DNI pendiente, ver abajo), 003 (monto a pagar desglosado),
 005, 007 (catálogo provisional AL_DIA/EN_MORA/CANCELADO), 008 / 013 (comprobante con mora y capital
-desglosados), 010, 012 (por codCredito e idCliente), 015, 016, 017 (rechazo).
+desglosados), 010, 011 (pagos pendientes y su resolución, INC-01), 012 (por codCredito e idCliente),
+015, 016, 017 (rechazo), 018 (conciliación diaria, I-04/I-05).
 Parcial / falta:
 - RF-COB-002 / 012: consulta por DNI (hoy solo por idCliente; requiere interfaz con Clientes, aún no existe).
 - RF-COB-004: validación de identidad (PROPUESTA; simular token de Seguridad, no implementar antifraude real).
-- RF-COB-011: consultar y resolver pagos PENDIENTES (consultar a Cuentas por idOperacion antes de reintentar; INC-01 de I-04).
-- RF-COB-018 (I-04/I-05): conciliación diaria (total cobrado vs aplicado, pagos pendientes y su antigüedad).
+- RF-COB-011: política de reversión/reasignación del dinero de un pago REQUIERE_REVISION (hoy solo se marca).
 - Roles (I-04): COBRANZA_LEER (consultas, auditoría) y COBRANZA_EJECUTAR (pagos, mora). Simple: API key por rol.
 Fuera de alcance: RF-COB-006 (recordatorios) y RF-COB-014 (notificaciones).
 
 Supuestos provisionales introducidos en Parte 2A, pendientes de definición del Comité (ver README):
 catálogo de estados del crédito (AL_DIA/EN_MORA/CANCELADO) y orden de imputación del pago
 (hoy: primero mora vigente, luego capital; constante `ORDEN_IMPUTACION_MORA_PRIMERO` en `app/servicio.py`).
+En Parte 2B se agregó el estado PAGO.estadoConfirmacion = REQUIERE_REVISION (dinero ya cobrado por
+Cuentas que no se pudo aplicar porque la cuota cambió mientras el pago estaba PENDIENTE) y la definición
+de tasa de fallas de I-05 (ver "Prácticas ITIL" abajo): ambas son propuestas del equipo, no del Comité.
 
 ## Prácticas ITIL ya definidas (I-04 / I-05) que el código debe poder evidenciar
-- INC-01 pago no confirmado, INC-02 pago duplicado, INC-03 obligación no activada.
-- Indicadores: disponibilidad (`/salud`), tiempo de respuesta p95, tasa de fallas, tiempo de restauración,
-  pagos pendientes + conciliación diaria. Metas numéricas: por definir (no inventarlas).
+- INC-01 pago no confirmado: `GET /pagos/pendientes` (antigüedad) y `POST /pagos/{ref}/resolver` (consulta
+  a Cuentas por idOperacion, RN-COB-009: nunca reintenta el cargo). INC-02 pago duplicado: idempotencia
+  por referenciaTransaccion. INC-03 obligación no activada: RN-COB-001.
+- Indicadores: disponibilidad (`/salud`), tiempo de respuesta p95 de `POST /cr-int-08/pagos` (middleware en
+  memoria, `GET /metricas`), tasa de fallas de operación (`GET /metricas`; definición PROPUESTA: pagos no
+  confirmados o fallidos / intentos válidos, excluyendo rechazos por datos inválidos y duplicados — ver
+  README), tiempo de restauración (no implementado), pagos pendientes (`GET /metricas` y
+  `/pagos/pendientes`) + conciliación diaria (`GET /conciliacion`, RF-COB-018). Metas numéricas: por
+  definir (no inventarlas); los endpoints solo reportan el valor medido.
 
 ## Situación de integración
 Ningún otro módulo tiene API todavía. Cuentas, Desembolso y Home Banking se prueban con **simuladores HTTP
@@ -94,7 +103,7 @@ separados** (otro proceso/puerto) que respetan el contrato CR-INT. Documentar si
 con módulo real: pendiente porque el módulo aún no publica su API".
 
 ## Convenciones
-- Lógica nueva en `servicio.py` con su prueba en `tests/`. No romper las pruebas existentes (32 a la fecha).
+- Lógica nueva en `servicio.py` con su prueba en `tests/`. No romper las pruebas existentes (43 a la fecha).
 - Cada endpoint con `tags`, `summary` y ejemplo en Swagger, y citando la RN/RF que cumple.
 - No guardar credenciales en el código ni en el repositorio (`.env` está en `.gitignore`).
 - Decisiones pendientes del Comité: dejarlas como parámetro o rechazo explícito, nunca como valor inventado.

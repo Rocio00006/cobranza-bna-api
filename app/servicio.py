@@ -211,6 +211,43 @@ def _resultado(db, id_pago, idempotente):
     }
 
 
+def _aplicar_a_cuota(db, id_pago, cod, cuota, monto, monto_mora, monto_capital):
+    """Aplica un pago ya CONFIRMADO a una cuota: registra APLICACION_PAGO, descuenta capital/mora,
+    deja los eventos de auditoria y recalcula CANCELADO / AL_DIA / EN_MORA (RF-COB-007). No hace commit;
+    el llamador decide la transaccion. Usado por registrar_pago y por resolver_pago (RF-COB-011)."""
+    db.ejecutar(
+        "INSERT INTO APLICACION_PAGO (idAplicacion, idPago, idCuota, montoAplicado) VALUES (%s, %s, %s, %s)",
+        (nuevo_id("APL"), id_pago, cuota["idCuota"], monto))
+    saldo_capital = D(cuota["saldoPendiente"])
+    mora_pendiente = D(cuota["moraPendiente"])
+    nuevo_capital = saldo_capital - monto_capital
+    nueva_mora = mora_pendiente - monto_mora
+    nuevo_estado = "PAGADA" if (nuevo_capital == 0 and nueva_mora == 0) else "PARCIAL"
+    db.ejecutar("UPDATE CUOTA SET saldoPendiente = %s, moraPendiente = %s, estadoCuota = %s WHERE idCuota = %s",
+                (nuevo_capital, nueva_mora, nuevo_estado, cuota["idCuota"]))
+    registrar_evento(db, id_pago, "PAGO_APLICADO")
+    registrar_evento(db, cuota["idCuota"], "CUOTA_" + nuevo_estado)
+    pend = db.uno(
+        "SELECT COUNT(*) AS n FROM CUOTA WHERE codCredito = %s AND (saldoPendiente > 0 OR moraPendiente > 0)",
+        (cod,))
+    if pend["n"] == 0:
+        db.ejecutar("UPDATE CREDITO SET estadoCredito = %s WHERE codCredito = %s", ("CANCELADO", cod))
+        registrar_evento(db, cod, "CREDITO_CANCELADO")
+    else:
+        recalcular_estado_credito(db, cod)
+
+
+def _split_imputacion(monto, saldo_capital, mora_pendiente):
+    """SUPUESTO provisional de orden de imputacion (ORDEN_IMPUTACION_MORA_PRIMERO), pendiente del Comite."""
+    if ORDEN_IMPUTACION_MORA_PRIMERO:
+        monto_mora = min(monto, mora_pendiente)
+        monto_capital = monto - monto_mora
+    else:
+        monto_capital = min(monto, saldo_capital)
+        monto_mora = monto - monto_capital
+    return monto_mora, monto_capital
+
+
 # ------------------------------------------------------------------ CR-INT-08 y CR-INT-07
 def registrar_pago(db, d, cuentas):
     """CR-INT-08 (Home Banking a Cobranza). Aplica RN-COB-001/002/003/004/006/009/011/012 y RN-INT-CR-006."""
@@ -246,13 +283,7 @@ def registrar_pago(db, d, cuentas):
                  f"(capital {saldo_capital} + mora {mora_pendiente}). "
                  "El tratamiento del excedente esta pendiente de definicion del Comite", "RN-COB-011")
 
-    # SUPUESTO provisional de orden de imputacion (ORDEN_IMPUTACION_MORA_PRIMERO), pendiente del Comite.
-    if ORDEN_IMPUTACION_MORA_PRIMERO:
-        monto_mora = min(monto, mora_pendiente)
-        monto_capital = monto - monto_mora
-    else:
-        monto_capital = min(monto, saldo_capital)
-        monto_mora = monto - monto_capital
+    monto_mora, monto_capital = _split_imputacion(monto, saldo_capital, mora_pendiente)
 
     id_pago = nuevo_id("PAG")
     try:
@@ -272,25 +303,7 @@ def registrar_pago(db, d, cuentas):
     try:
         if estado == "CONFIRMADO":
             db.ejecutar("UPDATE PAGO SET estadoConfirmacion = %s WHERE idPago = %s", ("CONFIRMADO", id_pago))
-            db.ejecutar(
-                "INSERT INTO APLICACION_PAGO (idAplicacion, idPago, idCuota, montoAplicado) VALUES (%s, %s, %s, %s)",
-                (nuevo_id("APL"), id_pago, cuota["idCuota"], monto))
-            nuevo_capital = saldo_capital - monto_capital
-            nueva_mora = mora_pendiente - monto_mora
-            nuevo_estado = "PAGADA" if (nuevo_capital == 0 and nueva_mora == 0) else "PARCIAL"
-            db.ejecutar("UPDATE CUOTA SET saldoPendiente = %s, moraPendiente = %s, estadoCuota = %s WHERE idCuota = %s",
-                        (nuevo_capital, nueva_mora, nuevo_estado, cuota["idCuota"]))
-            registrar_evento(db, id_pago, "PAGO_APLICADO")
-            registrar_evento(db, cuota["idCuota"], "CUOTA_" + nuevo_estado)
-            pend = db.uno(
-                "SELECT COUNT(*) AS n FROM CUOTA WHERE codCredito = %s AND (saldoPendiente > 0 OR moraPendiente > 0)",
-                (d["codCredito"],))
-            if pend["n"] == 0:
-                db.ejecutar("UPDATE CREDITO SET estadoCredito = %s WHERE codCredito = %s",
-                            ("CANCELADO", d["codCredito"]))
-                registrar_evento(db, d["codCredito"], "CREDITO_CANCELADO")
-            else:
-                recalcular_estado_credito(db, d["codCredito"])  # RF-COB-007
+            _aplicar_a_cuota(db, id_pago, d["codCredito"], cuota, monto, monto_mora, monto_capital)
         elif estado == "RECHAZADO":  # RN-COB-009: la cuota no se cierra sin confirmacion
             db.ejecutar("UPDATE PAGO SET estadoConfirmacion = %s WHERE idPago = %s", ("RECHAZADO", id_pago))
             registrar_evento(db, id_pago, "PAGO_RECHAZADO")
@@ -301,6 +314,100 @@ def registrar_pago(db, d, cuentas):
         db.rollback()
         raise
     r = _resultado(db, id_pago, False)
+    r["motivo"] = motivo
+    return r
+
+
+def _parse_dt(v):
+    if isinstance(v, datetime):
+        return v
+    return datetime.strptime(str(v)[:19], "%Y-%m-%d %H:%M:%S")
+
+
+def pagos_pendientes(db):
+    """RF-COB-011 / INC-01 (I-04): pagos en estado PENDIENTE con su antiguedad en horas."""
+    filas = db.todos("SELECT * FROM PAGO WHERE estadoConfirmacion = 'PENDIENTE' ORDER BY fechaHora")
+    ahora_dt = datetime.now()
+    out = []
+    for f in filas:
+        horas = round((ahora_dt - _parse_dt(f["fechaHora"])).total_seconds() / 3600, 2)
+        out.append({
+            "idPago": f["idPago"], "codCredito": f["codCredito"],
+            "referenciaTransaccion": f["referenciaTransaccion"], "fechaHora": str(f["fechaHora"])[:19],
+            "montoPago": D(f["montoPago"]), "antiguedadHoras": horas,
+        })
+    return out
+
+
+def resolver_pago(db, ref, cuentas):
+    """RF-COB-011 / INC-01: resuelve un pago que quedo PENDIENTE consultando a Cuentas por su
+    idOperacion (RN-COB-009: un cargo incierto nunca se reintenta, solo se consulta).
+    Si Cuentas confirma, se aplica con el estado ACTUAL de la cuota (pudo cambiar mientras el pago
+    estaba pendiente): si el monto ya excede lo adeudado, el dinero ya se cobro pero no se puede aplicar
+    sin mas, asi que queda REQUIERE_REVISION (la politica de reversion financiera esta pendiente del
+    Comite). Si Cuentas rechaza, el pago queda RECHAZADO. Si Cuentas sigue sin responder, no cambia nada."""
+    p = db.uno("SELECT * FROM PAGO WHERE referenciaTransaccion = %s", (ref,))
+    if not p:
+        raise ErrorNegocio(404, "Pago no encontrado", "RN-COB-012")
+    if p["estadoConfirmacion"] != "PENDIENTE":
+        raise ErrorNegocio(
+            409, f"El pago esta {p['estadoConfirmacion']}; solo se resuelven pagos PENDIENTE", "RN-COB-009")
+
+    estado, motivo = cuentas.consultar(ref)  # RN-COB-009: se consulta, nunca se reintenta el cargo
+
+    if estado == "SIN_RESPUESTA":
+        registrar_evento(db, p["idPago"], "PAGO_SIN_CONFIRMAR")
+        db.commit()
+        r = _resultado(db, p["idPago"], False)
+        r["motivo"] = motivo
+        return r
+
+    if estado == "RECHAZADO":
+        try:
+            db.ejecutar("UPDATE PAGO SET estadoConfirmacion = %s WHERE idPago = %s", ("RECHAZADO", p["idPago"]))
+            registrar_evento(db, p["idPago"], "PAGO_RECHAZADO")
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        r = _resultado(db, p["idPago"], False)
+        r["motivo"] = motivo
+        return r
+
+    # estado == "CONFIRMADO": el dinero ya se cobro. Se aplica con el estado actual de la cuota.
+    monto = D(p["montoPago"])
+    try:
+        cuota = db.uno(
+            "SELECT * FROM CUOTA WHERE codCredito = %s AND (saldoPendiente > 0 OR moraPendiente > 0) "
+            "ORDER BY numeroCuota LIMIT 1", (p["codCredito"],))
+        total_adeudado = D(cuota["saldoPendiente"]) + D(cuota["moraPendiente"]) if cuota else CERO
+        if not cuota or monto > total_adeudado:
+            db.ejecutar("UPDATE PAGO SET estadoConfirmacion = %s WHERE idPago = %s",
+                        ("REQUIERE_REVISION", p["idPago"]))
+            registrar_evento(db, p["idPago"], "PAGO_REQUIERE_REVISION")
+            db.commit()
+            r = _resultado(db, p["idPago"], False)
+            if not cuota:
+                r["motivo"] = ("Cuentas confirmo el cargo, pero el credito ya no tiene cuotas pendientes. "
+                                "Requiere revision manual; la politica de reversion esta pendiente del Comite")
+            else:
+                r["motivo"] = (f"Cuentas confirmo el cargo de {monto}, pero ya excede el saldo adeudado "
+                                f"actual de la cuota ({total_adeudado}). Requiere revision manual; la "
+                                "politica de reversion financiera esta pendiente del Comite")
+            return r
+
+        saldo_capital = D(cuota["saldoPendiente"])
+        mora_pendiente = D(cuota["moraPendiente"])
+        monto_mora, monto_capital = _split_imputacion(monto, saldo_capital, mora_pendiente)
+        db.ejecutar(
+            "UPDATE PAGO SET estadoConfirmacion = %s, montoMora = %s, montoCapital = %s WHERE idPago = %s",
+            ("CONFIRMADO", monto_mora, monto_capital, p["idPago"]))
+        _aplicar_a_cuota(db, p["idPago"], p["codCredito"], cuota, monto, monto_mora, monto_capital)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    r = _resultado(db, p["idPago"], False)
     r["motivo"] = motivo
     return r
 
@@ -403,3 +510,63 @@ def auditoria(db, id_entidad=None, limite=50):
     return [{"idEvento": f["idEvento"], "idEntidad": f["idEntidad"], "tipoEvento": f["tipoEvento"],
              "timestamp": str(f["timestamp"])[:19], "moduloEmisor": f["moduloEmisor"],
              "usuarioOperador": f["usuarioOperador"]} for f in filas]
+
+
+# ------------------------------------------------------------------ RF-COB-018 / indicadores I-05
+def _pagos_por_estado_y_fecha(db, estado, fecha):
+    filas = db.todos(
+        "SELECT * FROM PAGO WHERE estadoConfirmacion = %s AND DATE(fechaHora) = %s ORDER BY fechaHora",
+        (estado, fecha))
+    return [{"idPago": f["idPago"], "codCredito": f["codCredito"], "referenciaTransaccion": f["referenciaTransaccion"],
+             "fechaHora": str(f["fechaHora"])[:19], "montoPago": D(f["montoPago"])} for f in filas]
+
+
+def conciliacion(db, fecha=None):
+    """RF-COB-018 (I-04/I-05): total cobrado (CONFIRMADO + REQUIERE_REVISION, dinero que Cuentas si
+    cargo) vs total aplicado (APLICACION_PAGO, solo pagos CONFIRMADO que se abonaron a una cuota) del
+    dia. La diferencia entre ambos delata pagos REQUIERE_REVISION (cobrados pero no aplicados).
+    Tambien el detalle de pagos pendientes (con antiguedad, sin filtrar por dia: es un backlog abierto),
+    rechazados y REQUIERE_REVISION del dia. Deja un evento CONCILIACION_EJECUTADA."""
+    f = _fecha(fecha, True) if fecha else date.today().strftime("%Y-%m-%d")
+    cobrado = db.uno(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(montoPago), 0) AS total FROM PAGO "
+        "WHERE estadoConfirmacion IN ('CONFIRMADO','REQUIERE_REVISION') AND DATE(fechaHora) = %s", (f,))
+    aplicado = db.uno(
+        "SELECT COALESCE(SUM(a.montoAplicado), 0) AS total FROM APLICACION_PAGO a "
+        "JOIN PAGO p ON p.idPago = a.idPago WHERE p.estadoConfirmacion = 'CONFIRMADO' AND DATE(p.fechaHora) = %s",
+        (f,))
+    total_cobrado = D(cobrado["total"])
+    total_aplicado = D(aplicado["total"])
+
+    try:
+        registrar_evento(db, f"CONCIL-{f}", "CONCILIACION_EJECUTADA")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "fecha": f, "totalCobrado": total_cobrado, "totalAplicado": total_aplicado,
+        "diferencia": total_cobrado - total_aplicado, "cantidadPagosCobrados": cobrado["n"],
+        "pagosPendientes": pagos_pendientes(db),
+        "pagosRechazados": _pagos_por_estado_y_fecha(db, "RECHAZADO", f),
+        "pagosRequierenRevision": _pagos_por_estado_y_fecha(db, "REQUIERE_REVISION", f),
+    }
+
+
+def metricas(db, p95_pago_ms=None, muestras_pago=0):
+    """Indicadores I-05, SIN metas numericas (solo el valor medido). Tasa de fallas de operacion =
+    pagos no confirmados o fallidos / intentos validos. Cada fila de PAGO ya es un "intento valido":
+    los rechazos por datos invalidos (RN-COB-002/004/011, etc.) no llegan a insertar un PAGO, y los
+    duplicados (idempotencia, RN-INT-CR-006) tampoco crean una fila nueva."""
+    total = db.uno("SELECT COUNT(*) AS n FROM PAGO")["n"]
+    fallidos = db.uno(
+        "SELECT COUNT(*) AS n FROM PAGO WHERE estadoConfirmacion IN ('RECHAZADO','PENDIENTE','REQUIERE_REVISION')"
+    )["n"]
+    pendientes = db.uno("SELECT COUNT(*) AS n FROM PAGO WHERE estadoConfirmacion = 'PENDIENTE'")["n"]
+    tasa_fallas = round(fallidos / total, 4) if total else None
+    return {
+        "intentosValidos": total, "pagosFallidos": fallidos, "tasaFallasOperacion": tasa_fallas,
+        "pagosPendientes": pendientes,
+        "tiempoRespuestaPagosP95Ms": p95_pago_ms, "muestrasTiempoRespuesta": muestras_pago,
+    }

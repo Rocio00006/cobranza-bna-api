@@ -37,7 +37,9 @@ Todas las integraciones son REST/JSON vía Bus de Servicios.
   recibe la mora (RGN-15 dice que la calcula CORE) y la guarda con historial (tabla MORA, campo `vigente`).
 - RN-COB-006: cada pago confirmado actualiza la cuota y deja traza (saldo y estado).
 - RN-COB-009: la cuota no se cierra sin confirmación de Cuentas. Un cargo incierto NO se reintenta.
-- RN-COB-010: el atraso se calcula con el calendario vigente recibido, no con fechas propias.
+- RN-COB-010: el atraso se calcula con el calendario vigente recibido, no con fechas propias. `registrar_mora`
+  rechaza (422) si la cuota aun no vencio respecto de la fecha actual (acepta `fechaReferencia` opcional para
+  demostrarlo) o si `diasAtraso` es 0 con `montoCalculado` mayor a cero.
 - RN-COB-011 (= RF-COB-017): pago mayor al saldo de la cuota → se rechaza / aísla. **No decidir el tratamiento**.
 - RN-COB-012 / RN-CR-GEN-004: todo pago y cambio de estado deja evento de auditoría.
 - RN-INT-CR-006 (= RF-COB-016): idempotencia por referenciaTransaccion/idOperacion.
@@ -48,6 +50,22 @@ CREDITO, CUOTA, PAGO, CANAL_PAGO, APLICACION_PAGO, MORA, EVENTO_AUDITORIA.
 El diccionario oficial usa: montos DECIMAL(14,2); idSolicitud NOT NULL; referenciaTransaccion VARCHAR(40);
 idEntidad VARCHAR(20); usuarioOperador VARCHAR(30); tipoIntegracion VARCHAR(30). El código debe alinearse a esto
 o documentar la diferencia.
+
+### Cambios respecto al diccionario de datos de Fase II (pendiente de trasladar al documento oficial)
+Agregados en Parte 2A, no están en el diccionario de Fase II todavía. Son columnas internas de Cobranza
+(no viajan en ninguna interfaz CR-INT), DECIMAL(14,2) para mantener la convención de montos del diccionario:
+- `CUOTA.moraPendiente`: antes la mora recibida (RN-COB-005) se sumaba directo a `CUOTA.saldoPendiente`,
+  mezclando capital y mora en un solo campo. Se separó porque RF-COB-003 (monto a pagar desglosado) y
+  RF-COB-008/013 (comprobante con mora y capital por separado) necesitan distinguir cuánto de la deuda es
+  capital y cuánto es mora vigente.
+- `PAGO.montoMora` y `PAGO.montoCapital`: registran cómo se repartió cada pago entre mora y capital, según
+  el orden de imputación (`ORDEN_IMPUTACION_MORA_PRIMERO` en `app/servicio.py`, SUPUESTO pendiente del
+  Comité). Sin estas columnas el comprobante (RF-COB-008/013) no podría mostrar ese desglose después del
+  pago, porque `APLICACION_PAGO.montoAplicado` solo guarda el total aplicado a la cuota.
+
+En MySQL, `app/db.py` agrega estas columnas con una migración idempotente (`migrar_esquema`, consulta
+`information_schema.columns`) porque `CREATE TABLE IF NOT EXISTS` no las agrega a una base ya creada en la
+Parte 1. En SQLite no hace falta: las pruebas siempre parten de un esquema nuevo.
 
 ## Requerimientos funcionales (Fase I) y estado en el código
 Hecho: RF-COB-001, 002 (por codCredito e idCliente; DNI pendiente, ver abajo), 003 (monto a pagar desglosado),
@@ -76,7 +94,7 @@ separados** (otro proceso/puerto) que respetan el contrato CR-INT. Documentar si
 con módulo real: pendiente porque el módulo aún no publica su API".
 
 ## Convenciones
-- Lógica nueva en `servicio.py` con su prueba en `tests/`. No romper las 13 pruebas existentes.
+- Lógica nueva en `servicio.py` con su prueba en `tests/`. No romper las pruebas existentes (32 a la fecha).
 - Cada endpoint con `tags`, `summary` y ejemplo en Swagger, y citando la RN/RF que cumple.
 - No guardar credenciales en el código ni en el repositorio (`.env` está en `.gitignore`).
 - Decisiones pendientes del Comité: dejarlas como parámetro o rechazo explícito, nunca como valor inventado.

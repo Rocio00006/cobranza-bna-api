@@ -35,7 +35,7 @@ class PruebasParte2A(unittest.TestCase):
         self.assertEqual(r["moraVigente"], Decimal("0.00"))
         self.assertEqual(r["totalAPagar"], Decimal("400.00"))
 
-        S.registrar_mora(self.db, "CR-0001", 1, 5, "12.50")
+        S.registrar_mora(self.db, "CR-0001", 1, 5, "12.50", fecha_referencia="2026-11-10")
         r = S.monto_a_pagar(self.db, "CR-0001")
         self.assertEqual(r["saldoCapital"], Decimal("400.00"))
         self.assertEqual(r["moraVigente"], Decimal("12.50"))
@@ -74,7 +74,7 @@ class PruebasParte2A(unittest.TestCase):
     # ---------------------------------------------------------- RF-COB-008 / RF-COB-013
     def test_comprobante_desglosa_cuanto_fue_mora_y_cuanto_capital(self):
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_mora(self.db, "CR-0001", 1, 5, "50.00")
+        S.registrar_mora(self.db, "CR-0001", 1, 5, "50.00", fecha_referencia="2026-11-10")
         S.registrar_pago(self.db, pago("OP-1", "100.00"), self.cuentas)  # orden: mora primero
         c = S.comprobante(self.db, "OP-1")
         self.assertEqual(c["montoAplicadoMora"], Decimal("50.00"))
@@ -84,10 +84,30 @@ class PruebasParte2A(unittest.TestCase):
 
     def test_excedente_se_calcula_sobre_capital_mas_mora(self):
         S.activar_obligacion(self.db, obligacion())
-        S.registrar_mora(self.db, "CR-0001", 1, 5, "50.00")  # total adeudado de la cuota 1: 450.00
+        S.registrar_mora(self.db, "CR-0001", 1, 5, "50.00", fecha_referencia="2026-11-10")  # total: 450.00
         with self.assertRaises(S.ErrorNegocio) as e:
             S.registrar_pago(self.db, pago("OP-1", "500.00"), self.cuentas)
         self.assertEqual(e.exception.regla, "RN-COB-011")
+
+    # ---------------------------------------------------------- RN-COB-010
+    def test_mora_rechazada_si_la_cuota_no_vencio(self):
+        S.activar_obligacion(self.db, obligacion())  # cuota 1 vence 2026-11-05, "hoy" (real) es anterior
+        with self.assertRaises(S.ErrorNegocio) as e:
+            S.registrar_mora(self.db, "CR-0001", 1, 5, "12.50")
+        self.assertEqual(e.exception.status, 422)
+        self.assertEqual(e.exception.regla, "RN-COB-010")
+
+    def test_mora_rechazada_si_diasAtraso_es_cero_con_monto_mayor_a_cero(self):
+        S.activar_obligacion(self.db, obligacion())
+        with self.assertRaises(S.ErrorNegocio) as e:
+            S.registrar_mora(self.db, "CR-0001", 1, 0, "12.50", fecha_referencia="2026-11-10")
+        self.assertEqual(e.exception.status, 422)
+        self.assertEqual(e.exception.regla, "RN-COB-010")
+
+    def test_mora_aceptada_cuando_la_cuota_ya_vencio(self):
+        S.activar_obligacion(self.db, obligacion())
+        r = S.registrar_mora(self.db, "CR-0001", 1, 5, "12.50", fecha_referencia="2026-11-10")
+        self.assertEqual(r["moraPendienteCuota"], Decimal("12.50"))
 
     # ---------------------------------------------------------- RF-COB-002 / RF-COB-012
     def test_consulta_de_creditos_y_pagos_por_idCliente(self):

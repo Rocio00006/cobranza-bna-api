@@ -25,6 +25,7 @@ Implementa el flujo de pago de cuotas respetando las reglas RN-COB y las interfa
 | RN-COB-005 | La mora se guarda separada del capital (`CUOTA.moraPendiente`); un recálculo reemplaza el valor vigente y conserva el historial en `MORA` |
 | RN-COB-006 | El pago confirmado se aplica a la cuota pendiente más antigua (capital y/o mora) |
 | RN-COB-009 | La cuota no se cierra sin confirmación de Cuentas |
+| RN-COB-010 | La mora solo se acepta si la cuota ya venció (y `diasAtraso` 0 no admite monto > 0) |
 | RN-COB-011 | Un pago mayor al saldo adeudado (capital + mora vigente) de la cuota se rechaza (el tratamiento del excedente está pendiente del Comité) |
 | RN-COB-012 / RN-CR-GEN-004 | Cada pago y cambio de estado (incluido AL_DIA/EN_MORA/CANCELADO) deja un evento de auditoría |
 | RN-INT-CR-006 | Idempotencia: la misma `referenciaTransaccion` no genera un segundo pago |
@@ -58,7 +59,7 @@ Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado
 5. **Pago que completa la cuota:** `montoPago 250.00` con `OP-0002`. Cuota 1 `PAGADA`.
 6. **Cuentas rechaza:** `montoPago 100.00`, `cuentaOrigen "SIN-FONDOS"`, `OP-0003`. Resultado: `RECHAZADO`; la cuota 2 no cambia (RN-COB-009).
 7. **Excedente:** `montoPago 9999` con `OP-0004`. Responde 422 con la regla RN-COB-011.
-8. **Mora recibida (RN-COB-005):** `POST /creditos/CR-0001/cuotas/2/mora` con `5` días y `12.50`. La cuota 2 mantiene `saldoPendiente` (capital) en 400 y muestra `moraPendiente 12.50`.
+8. **Mora recibida (RN-COB-005 / RN-COB-010):** `POST /creditos/CR-0001/cuotas/2/mora?fechaReferencia=2026-12-10` con `5` días y `12.50` (la cuota 2 vence 2026-12-05; `fechaReferencia` simula que ya pasó esa fecha, ya que RN-COB-010 rechaza la mora de una cuota que aún no venció). La cuota 2 mantiene `saldoPendiente` (capital) en 400 y muestra `moraPendiente 12.50`.
    En MySQL: `SELECT * FROM MORA;` y `SELECT numeroCuota, saldoPendiente, moraPendiente FROM CUOTA;`
 9. **Monto a pagar desglosado (RF-COB-003):** `GET /creditos/CR-0001/monto-a-pagar` devuelve la cuota 2 con `saldoCapital 400`, `moraVigente 12.50` y `totalAPagar 412.50`.
 10. **Pago cubre mora y capital (RF-COB-008/013):** paga la cuota 2 con `montoPago 412.50` y `OP-0005`. El comprobante (`GET /pagos/OP-0005/comprobante`) muestra `montoAplicadoMora 12.50` y `montoAplicadoCapital 400.00`.
@@ -68,7 +69,7 @@ Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado
 14. **Auditoría:** `GET /auditoria` y en MySQL: ``SELECT tipoEvento, idEntidad, `timestamp` FROM EVENTO_AUDITORIA ORDER BY `timestamp`;``
 
 ## Supuestos
-- **Mora:** la fórmula y quién la calcula están pendientes del Comité (RN-COB-005). Cobranza no calcula ni asume tasa: guarda la mora que recibe en `CUOTA.moraPendiente`, **separada del capital** (`CUOTA.saldoPendiente`). Un recálculo reemplaza el valor vigente (no se suma) y el historial completo queda en la tabla `MORA` (campo `vigente`).
+- **Mora:** la fórmula y quién la calcula están pendientes del Comité (RN-COB-005). Cobranza no calcula ni asume tasa: guarda la mora que recibe en `CUOTA.moraPendiente`, **separada del capital** (`CUOTA.saldoPendiente`). Un recálculo reemplaza el valor vigente (no se suma) y el historial completo queda en la tabla `MORA` (campo `vigente`). **RN-COB-010:** se rechaza (422) si la cuota aún no venció respecto de la fecha de referencia (por defecto hoy; `fechaReferencia` opcional en el endpoint, igual que en `recalcular-estado`, para poder demostrarlo) o si `diasAtraso` es 0 con `montoCalculado` mayor a cero.
 - **Orden de imputación del pago (RF-COB-008/013):** es un **SUPUESTO provisional, pendiente de definición del Comité**. Hoy el pago cubre primero la mora vigente de la cuota y el resto va a capital (constante `ORDEN_IMPUTACION_MORA_PRIMERO` en `app/servicio.py`; cambiarla a `False` invierte el orden). El comprobante y la respuesta del pago muestran `montoAplicadoMora` y `montoAplicadoCapital` por separado.
 - **Estados del crédito (RF-COB-007):** catálogo **provisional, pendiente de definición del Comité**: `AL_DIA`, `EN_MORA` (alguna cuota con saldo —capital o mora— vencida respecto de la fecha de referencia) y `CANCELADO` (terminal, todas las cuotas saldadas). Se recalcula automáticamente tras cada pago y cada registro de mora, y manualmente con `POST /creditos/{cod}/recalcular-estado?fechaReferencia=AAAA-MM-DD` (parámetro opcional, pensado para demostrar la transición sin esperar al vencimiento real).
 - **Cuentas:** por defecto está simulado. `cuentaOrigen = "SIN-FONDOS"` simula un rechazo y `"SIN-RESPUESTA"` simula que Cuentas no responde (el pago queda `PENDIENTE`). Para conectarlo al módulo real, define `CUENTAS_URL` y acuerda el formato de respuesta con ese equipo.
@@ -86,7 +87,7 @@ Muestra en pantalla Swagger y un cliente MySQL (Workbench o consola) lado a lado
 - Pruebas de integración en el ambiente de Testing y despliegue.
 
 ## Pruebas automáticas
-La lógica de negocio tiene 29 pruebas (con SQLite, sin necesidad de MySQL):
+La lógica de negocio tiene 32 pruebas (con SQLite, sin necesidad de MySQL):
 ```
 python -m unittest discover -s tests -v
 ```

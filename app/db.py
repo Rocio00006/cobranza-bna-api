@@ -154,11 +154,37 @@ DDL = [
 ]
 
 
+# Columnas agregadas despues de la creacion inicial del esquema. CREATE TABLE IF NOT EXISTS no las
+# agrega a una tabla que ya existia sin ellas, asi que en MySQL se migran aparte (ver CLAUDE.md,
+# seccion "Cambios respecto al diccionario de datos de Fase II").
+COLUMNAS_NUEVAS = [
+    ("CUOTA", "moraPendiente", "DECIMAL(14,2) NOT NULL DEFAULT 0.00"),
+    ("PAGO", "montoMora", "DECIMAL(14,2) NOT NULL DEFAULT 0.00"),
+    ("PAGO", "montoCapital", "DECIMAL(14,2) NOT NULL DEFAULT 0.00"),
+]
+
+
+def migrar_esquema(db):
+    """Migracion simple e idempotente para MySQL: agrega COLUMNAS_NUEVAS si faltan, consultando
+    information_schema. No hace nada en SQLite (las pruebas siempre parten de un esquema nuevo)."""
+    if db.dialecto != "mysql":
+        return
+    for tabla, columna, definicion in COLUMNAS_NUEVAS:
+        existe = db.uno(
+            "SELECT COLUMN_NAME FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE() "
+            "AND LOWER(TABLE_NAME) = LOWER(%s) AND LOWER(COLUMN_NAME) = LOWER(%s)",
+            (tabla, columna))
+        if not existe:
+            db.ejecutar(f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}")
+            db.commit()
+
+
 def crear_esquema(db):
     sufijo = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" if db.dialecto == "mysql" else ""
     for ddl in DDL:
         db.ejecutar(ddl + sufijo)
     db.commit()
+    migrar_esquema(db)
     if not db.uno("SELECT idCanal FROM CANAL_PAGO WHERE idCanal = %s", ("HB",)):
         db.ejecutar(
             "INSERT INTO CANAL_PAGO (idCanal, nombreCanal, tipoIntegracion) VALUES (%s, %s, %s)",

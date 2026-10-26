@@ -346,17 +346,25 @@ def _cuota_por_numero(db, cod, numero):
     return cuota
 
 
-def registrar_mora(db, cod, numero, dias_atraso, monto_calculado, origen="CORE (simulado)"):
+def registrar_mora(db, cod, numero, dias_atraso, monto_calculado, origen="CORE (simulado)", fecha_referencia=None):
     """Registra una mora RECIBIDA, separada del saldo de capital de la cuota (CUOTA.moraPendiente).
     La formula y quien la calcula estan pendientes del Comite (RN-COB-005): Cobranza no calcula ni asume
     tasa; solo guarda el valor que le llega. Un recalculo REEMPLAZA la mora pendiente vigente
-    (no se suma) y conserva el historial completo en la tabla MORA (campo vigente)."""
+    (no se suma) y conserva el historial completo en la tabla MORA (campo vigente).
+    RN-COB-010: la cuota debe estar vencida respecto de fecha_referencia (por defecto hoy; parametro
+    opcional para poder demostrarlo), y diasAtraso en 0 no admite un montoCalculado mayor a cero."""
     cuota = _cuota_por_numero(db, cod, numero)
     if cuota["estadoCuota"] == "PAGADA":
         raise ErrorNegocio(409, "La cuota ya esta pagada; no admite mora", "RN-COB-010")
     monto = D(monto_calculado)
-    if monto < 0 or int(dias_atraso) < 0:
+    dias = int(dias_atraso)
+    if monto < 0 or dias < 0:
         raise ErrorNegocio(422, "diasAtraso y montoCalculado no pueden ser negativos", "RN-COB-005")
+    if dias == 0 and monto > 0:
+        raise ErrorNegocio(422, "diasAtraso en 0 no admite un montoCalculado mayor a cero", "RN-COB-010")
+    ref = _fecha(fecha_referencia, True) if fecha_referencia else date.today().strftime("%Y-%m-%d")
+    if str(cuota["fechaVencimiento"])[:10] >= ref:
+        raise ErrorNegocio(422, "La cuota todavia no vencio; no admite mora", "RN-COB-010")
     prev = db.uno("SELECT idMora FROM MORA WHERE idCuota = %s AND vigente = %s", (cuota["idCuota"], 1))
     id_mora = nuevo_id("MOR")
     try:

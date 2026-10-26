@@ -160,9 +160,14 @@ def comprobante(referenciaTransaccion: str, db=Depends(get_db)):
 
 
 @app.post("/creditos/{codCredito}/cuotas/{numeroCuota}/mora", tags=[TMO],
-          summary="Registrar la mora recibida para una cuota")
-def registrar_mora(codCredito: str, numeroCuota: int, body: MoraIn, db=Depends(get_db)):
-    return S.registrar_mora(db, codCredito, numeroCuota, body.diasAtraso, body.montoCalculado)
+          summary="Registrar la mora recibida para una cuota (RN-COB-010)")
+def registrar_mora(
+        codCredito: str, numeroCuota: int, body: MoraIn,
+        fechaReferencia: Optional[date] = Query(
+            None, description="Opcional, por defecto hoy. Permite demostrar RN-COB-010 sin esperar al vencimiento real."),
+        db=Depends(get_db)):
+    return S.registrar_mora(db, codCredito, numeroCuota, body.diasAtraso, body.montoCalculado,
+                             fecha_referencia=fechaReferencia)
 
 
 @app.get("/creditos/{codCredito}/cuotas/{numeroCuota}/mora", tags=[TMO], summary="Historial de mora de una cuota")

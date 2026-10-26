@@ -99,12 +99,14 @@ class PruebasCobranza(unittest.TestCase):
 
     def test_mora_se_refleja_y_el_recalculo_conserva_historial(self):
         # La mora se guarda separada del capital (CUOTA.moraPendiente); un recalculo reemplaza el valor vigente.
-        S.registrar_mora(self.db, "CR-0001", 2, 5, "12.50")
+        # La cuota 2 vence 2026-12-05; fecha_referencia simula que ya paso esa fecha (RN-COB-010).
+        ref = "2026-12-10"
+        S.registrar_mora(self.db, "CR-0001", 2, 5, "12.50", fecha_referencia=ref)
         c = S.obtener_credito(self.db, "CR-0001")["cuotas"][1]
         self.assertEqual(c["saldoPendiente"], Decimal("400.00"))
         self.assertEqual(c["moraPendiente"], Decimal("12.50"))
         self.assertEqual(c["totalAdeudado"], Decimal("412.50"))
-        S.registrar_mora(self.db, "CR-0001", 2, 8, "20.00")
+        S.registrar_mora(self.db, "CR-0001", 2, 8, "20.00", fecha_referencia=ref)
         c = S.obtener_credito(self.db, "CR-0001")["cuotas"][1]
         self.assertEqual(c["saldoPendiente"], Decimal("400.00"))
         self.assertEqual(c["moraPendiente"], Decimal("20.00"))
